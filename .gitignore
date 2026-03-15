@@ -27,7 +27,6 @@ env/
 ENV/
 env.bak/
 venv.bak/
-
 # Testing and coverage
 .pytest_cache/
 .coverage
@@ -38,7 +37,6 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
-
 # IDE and editors
 .vscode/
 .idea/
@@ -50,7 +48,6 @@ coverage.xml
 .settings/
 *.sublime-project
 *.sublime-workspace
-
 # OS specific
 .DS_Store
 .DS_Store?
@@ -59,7 +56,6 @@ coverage.xml
 .Trashes
 ehthumbs.db
 Thumbs.db
-
 # AegisAudit specific
 scan_history.db
 scan_history.db-journal
@@ -67,15 +63,19 @@ aegis-report/
 *.sarif
 report.html
 report.json
-
 # Logs
 *.log
 logs/
-
 # Environment variables
 .env
 .env.local
 .env.*.local
-
 # Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
+# Dependencies
+node_modules/
+# Build output
+.next/
+out/
+# Vercel
+.vercel
