@@ -79,3 +79,6 @@ node_modules/
 out/
 # Vercel
 .vercel
+*.db
+*.sqlite
+*.sqlite3
