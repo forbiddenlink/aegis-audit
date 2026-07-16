@@ -1,15 +1,22 @@
+from importlib.resources import files
 from pathlib import Path
-from aegisaudit.models import ScanResult
-from aegisaudit.history import ScanHistory
+
 from jinja2 import Template
 
+from aegisaudit.history import ScanHistory
+from aegisaudit.models import ScanResult
 
-def generate_html_report(result: ScanResult, output_path: Path):
+
+def generate_html_report(result: ScanResult, output_path: Path) -> None:
     """Generate a user-friendly HTML report using Jinja2."""
-    template_path = Path(__file__).parent.parent.parent / "templates" / "report.html.j2"
-
-    with open(template_path) as f:
-        template = Template(f.read())
+    # Read the template as package data. Resolving it by walking up from
+    # __file__ only worked from a git checkout: once installed, it pointed at
+    # site-packages/templates/, which does not exist, so the default
+    # `--format all` crashed for every user who pip-installed the tool.
+    template_source = (
+        files("aegisaudit").joinpath("templates", "report.html.j2").read_text(encoding="utf-8")
+    )
+    template = Template(template_source)
 
     # Fetch recent history for the chart
     history_db = ScanHistory()

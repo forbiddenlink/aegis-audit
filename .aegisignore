@@ -1,0 +1,14 @@
+# Paths excluded from `aegis audit`.
+# One glob per line, relative to the scan root. '#' starts a comment.
+# A trailing '/' (or a bare directory name) excludes the whole subtree.
+
+# Test fixtures contain deliberately fake credentials (AWS's documented example
+# key ID, a throwaway RSA key) used to prove the detectors fire. Not leaks.
+tests/
+
+# Lockfiles are hashes, not secrets.
+uv.lock
+
+# A suppression-config file naturally names the key-shaped patterns it
+# suppresses; scanning it just reports them back.
+.gitleaksignore

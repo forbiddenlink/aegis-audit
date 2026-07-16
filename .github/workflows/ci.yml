@@ -17,10 +17,10 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -39,19 +39,18 @@ jobs:
           ruff format --check aegisaudit/ tests/
 
       - name: Run type checking with mypy
-        continue-on-error: true  # Type annotations are work-in-progress
         run: |
-          mypy aegisaudit/ --no-strict-optional --ignore-missing-imports
+          mypy aegisaudit/
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=aegisaudit --cov-report=xml --cov-report=term-missing
+          pytest --cov=aegisaudit --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         if: matrix.python-version == '3.11'
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -63,10 +62,10 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
 
@@ -74,20 +73,26 @@ jobs:
         run: |
           pip install .
 
+      # This step is the tool's own dogfood gate, so it must be allowed to fail.
+      # It was previously continue-on-error, which hid a crash: the HTML
+      # reporter raised FileNotFoundError for every installed copy of the
+      # package (the Jinja2 template was not shipped in the wheel) and CI stayed
+      # green for the entire life of the bug.
+      #
+      # Suppressions live in .aegisignore.
       - name: Run self-scan on repository
-        continue-on-error: true  # Don't fail CI if security issues are found
         run: |
-          aegis audit . --out ./scan-results --format sarif,html
+          aegis audit . --out ./scan-results --format sarif,html --fail-on high
 
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4
         if: always()
         with:
           sarif_file: scan-results/report.sarif
           category: aegis-self-audit
 
       - name: Upload HTML Report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: security-audit-report

@@ -1,78 +1,130 @@
-# AegisAudit
-
-**Tagline:** Security posture reports for modern web apps.
-
 # AegisAudit 🛡️
 
-A modern, full-stack security posture scanner for both **Web Applications** (DAST-like) and **Source Code** (SAST).
+**Security posture reports for modern web apps.**
+
+A security scanner for both a **deployed site** (`scan`) and a **source tree**
+(`audit`), producing one score, one CI exit code, and JSON / SARIF / HTML
+reports.
 
 ## Features
 
-- **Web Scan (`scan`)**:
-  - **Headers**: Checks for HSTS, CSP, X-Frame-Options, etc.
-  - **DNS**: Analyzes SPF, DMARC, CAA records.
-  - **Content**: Passively detects PII (Emails) and exposed secrets (API Keys) in HTML.
-  - **Crypto**: Checks SSL/TLS certificate expiration and versions.
-  - **Probing**: Optionally checks for exposed files (`.env`, `.git`).
-  
-- **Code Audit (`audit`)**:
-  - **Secrets**: Scans files for hardcoded AWS keys, Google API keys, and private keys.
-  - **Dependencies**: Checks for vulnerable Python packages (`safety`) and Node.js code (`npm audit`).
-  - **Static Analysis**: Detects dangerous Python patterns like `eval()` and `exec()`.
+- **Web Scan (`scan`)** — passive checks against a live URL:
+  - **Headers**: HSTS, Content-Security-Policy, X-Content-Type-Options, and
+    information-disclosure headers (`Server`, `X-Powered-By`, ...).
+  - **HTTPS**: enforces HTTPS, detects mixed content.
+  - **TLS**: certificate expiry and deprecated protocol versions.
+  - **DNS**: SPF, DMARC and CAA records.
+  - **Supply chain**: missing Subresource Integrity, outdated JS libraries.
+  - **Content**: passively detects PII (emails) and exposed secrets in HTML.
+  - **Probing**: optionally checks for exposed `.env` / `.git` (`--probe`).
 
-- **Operational Excellence**:
-  - **History**: Tracks scan scores over time in a local SQLite database.
-  - **Alerts**: Sends results to Slack/Discord Webhooks.
-  - **Reports**: Generates JSON, SARIF (GitHub Security), and rich HTML reports with trend charts.
+- **Code Audit (`audit`)** — static analysis of a local directory:
+  - **Secrets**: hardcoded AWS keys, Google API keys, Slack tokens, private keys.
+  - **Dependencies**: vulnerable Python packages (via `safety`, if installed)
+    and Node.js packages (via `npm audit`).
+  - **Static analysis**: dangerous Python patterns such as `eval()` / `exec()`.
+
+- **Operational**:
+  - **CI gate**: `--fail-on` / `--fail-under` exit non-zero (see below).
+  - **Reports**: JSON, SARIF 2.1.0 (GitHub code scanning), and HTML.
+  - **History**: scan scores are recorded to a local SQLite database and
+    rendered as a trend chart in the HTML report.
+  - **Alerts**: results can be posted to a Slack/Discord webhook.
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/aegisaudit.git
-cd aegisaudit
+git clone https://github.com/forbiddenlink/aegis-audit.git
+cd aegis-audit
 pip install -e .
 ```
 
 ## Usage
 
-### 1. Web Scan
-
-Scan a live website for security issues.
+### Web scan
 
 ```bash
 # Basic scan
 aegis scan --url https://example.com
 
-# Deep scan (with file probing) and HTML report
+# Deep scan (with file probing) and an HTML report
 aegis scan --url https://example.com --probe --format html
 
-# Send alert to Discord
+# Send an alert to Discord
 aegis scan --url https://example.com --webhook "https://discord.com/api/webhooks/..."
 ```
 
-### 2. Code Audit
+> Only probe hosts you are authorised to test. `--probe` issues requests for
+> paths like `/.env` and `/.git/HEAD`.
 
-Audit a local directory for secrets and vulnerabilities.
+### Code audit
 
 ```bash
-# Audit current directory
+# Audit the current directory
 aegis audit .
 
-# Audit specific folder and output report
-aegis audit ./src --out ./audit-reports
+# Audit a specific folder, choose formats
+aegis audit ./src --out ./audit-reports --format json,sarif
 ```
 
-### 3. View History
+### Failing a build
 
-See how your security score improves over time.
+Gating is opt-in: with no gate flag, both commands report and exit 0.
 
 ```bash
-aegis history
+# Fail if anything high or worse is found
+aegis audit . --fail-on high
+
+# Fail if the score drops below 80
+aegis scan --url https://example.com --fail-under 80
 ```
 
-## Docker Usage
+Exit codes follow the convention used by semgrep and osv-scanner:
 
-Run AegisAudit without installing Python dependencies manually.
+| Code | Meaning |
+|------|---------|
+| `0`  | Clean, or findings present but below the gate |
+| `1`  | Findings tripped the gate |
+| `>=2`| Tool or usage error — distinct from "found something" |
+
+That distinction matters in CI: a crashed scan must not look like a clean one.
+
+### Suppressing findings
+
+Real repositories contain fake credentials in test fixtures and docs. Add a
+`.aegisignore` in the scan root — one glob per line, relative to that root,
+`#` for comments, a trailing `/` to exclude a subtree:
+
+```
+tests/
+docs/examples/*
+uv.lock
+```
+
+## Scoring
+
+The score is a **deduction pool**: start at 100 and subtract a fixed penalty per
+finding, floored at 0.
+
+| Severity | Penalty |
+|----------|---------|
+| Critical | 100 (disqualifying) |
+| High     | 40 |
+| Medium   | 15 |
+| Low      | 5 |
+| Info     | 0 |
+
+Two properties are deliberate:
+
+- **A critical is disqualifying**, not worth "40 points". An exposed `.git` or a
+  live private key means the posture has failed.
+- **Findings can only ever lower the score.** Categories that were not checked
+  are reported as absent rather than scored 100, so nothing donates free points.
+
+Per-category subscores appear alongside the overall score for triage; they are
+not averaged into it.
+
+## Docker
 
 ```bash
 docker build -t aegis .
@@ -81,26 +133,17 @@ docker run --rm aegis scan --url https://example.com
 
 ## Contributing
 
-Run tests with `pytest`:
-
 ```bash
-pytest tests/
+pip install -e ".[dev]"
+pytest
 ```
 
-## Example Output
-
-### Terminal
-
-![Terminal Output](https://via.placeholder.com/800x400?text=Terminal+Output+Screenshot)
-*(Example: Findings table with High/Medium/Low severity and overall score)*
-
-### HTML Report
-
-![HTML Report](https://via.placeholder.com/800x600?text=HTML+Report+Screenshot)
-*(Example: detailed remediation guidance)*
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Documentation
 
 - [Vision](docs/00-vision.md)
-- [Check Catalog](docs/07-check-catalog.md)
-- [CLI Spec](docs/05-cli-spec.md)
+
+> Note: `docs/05-cli-spec.md` and `docs/07-check-catalog.md` are pre-implementation
+> design documents. They describe flags and checks that were never built and do
+> not reflect the shipped CLI — read `--help` and this README instead.

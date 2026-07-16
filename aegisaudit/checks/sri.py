@@ -5,7 +5,7 @@ from aegisaudit.config import AegisConfig
 
 
 def check_sri(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
-    findings = []
+    findings: List[Finding] = []
 
     # We only care about HTML
     if "text/html" not in artifact.content_type:

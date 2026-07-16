@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from aegisaudit.models import ScanResult
+from aegisaudit.sast.ignore import DEFAULT_EXCLUDES, IGNORE_FILENAME, IgnoreRules
 from aegisaudit.sast.secrets import scan_file_for_secrets
 from aegisaudit.sast.static import scan_python_ast
 from aegisaudit.sast.dependencies import check_python_dependencies, check_node_dependencies
@@ -8,41 +9,46 @@ from aegisaudit.scoring import calculate_score
 
 
 class SASTScanner:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def scan(self, root_path: Path) -> ScanResult:
         all_findings = []
+        ignore_rules = IgnoreRules.from_root(root_path)
 
         # 1. Dependency Checks (Root level primarily)
         all_findings.extend(check_python_dependencies(root_path))
         all_findings.extend(check_node_dependencies(root_path))
 
         # 2. Walk files
-        for root, _, files in os.walk(root_path):
+        for root, dirs, files in os.walk(root_path):
+            # Prune noise directories in-place so os.walk does not descend into
+            # them at all.
+            dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES]
+
             for file in files:
                 file_path = Path(root) / file
 
-                # Skip .git, .venv, node_modules, caches
-                if any(
-                    p in file_path.parts
-                    for p in [
-                        ".git",
-                        "node_modules",
-                        "venv",
-                        ".venv",
-                        "__pycache__",
-                        ".pytest_cache",
-                    ]
-                ):
+                # Report locations relative to the scan root. An absolute path
+                # (e.g. /home/runner/work/repo/repo/src/x.py in CI) matches
+                # nothing in a GitHub repo tree, so SARIF alerts cannot be
+                # attached to a file.
+                display_path = file_path.relative_to(root_path).as_posix()
+
+                # The ignore file names the very patterns it suppresses, so
+                # scanning it reports back everything the user just excluded.
+                if display_path == IGNORE_FILENAME:
+                    continue
+
+                if ignore_rules.matches(display_path):
                     continue
 
                 # Secrets Scan (All text files)
-                all_findings.extend(scan_file_for_secrets(file_path))
+                all_findings.extend(scan_file_for_secrets(file_path, display_path))
 
                 # Static Analysis (Python)
                 if file_path.suffix == ".py":
-                    all_findings.extend(scan_python_ast(file_path))
+                    all_findings.extend(scan_python_ast(file_path, display_path))
 
         # Post-process findings to filter duplicates
         unique = {}

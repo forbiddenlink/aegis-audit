@@ -1,12 +1,17 @@
 import re
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 from aegisaudit.models import Finding, Severity
 
 # Reuse some patterns from checks/secrets.py but optimized for file scanning
-PATTERNS = {
+PATTERNS: Dict[str, Dict[str, Any]] = {
     "AWS Access Key": {
-        "regex": r"(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])",
+        # Anchored on the AWS key-ID prefixes. The previous pattern was a bare
+        # [A-Z0-9]{20}, which matched any 20-character uppercase alphanumeric
+        # run: scanning this repo reported a hash in uv.lock as a HIGH severity
+        # AWS key. An access key ID is identifiable precisely BY its prefix.
+        # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_identifiers.html
+        "regex": r"(?<![A-Z0-9])(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}(?![A-Z0-9])",
         "severity": Severity.HIGH,
         "tags": ["secrets", "aws"],
     },
@@ -28,8 +33,14 @@ PATTERNS = {
 }
 
 
-def scan_file_for_secrets(path: Path) -> List[Finding]:
+def scan_file_for_secrets(path: Path, display_path: Optional[str] = None) -> List[Finding]:
+    """Scan one file for hardcoded secrets.
+
+    display_path is the location reported on the finding. It should be relative
+    to the scan root so SARIF consumers can match it against a repo tree.
+    """
     findings = []
+    location = display_path if display_path is not None else str(path)
     try:
         # Read file safely
         try:
@@ -50,7 +61,8 @@ def scan_file_for_secrets(path: Path) -> List[Finding]:
                         title=f"Hardcoded {name}",
                         description=f"Found potential {name} in source code.",
                         evidence=f"File: {path.name}:{line_no} - Match: {m.group(0)[:10]}...",
-                        url=str(path),  # Overloading URL field for file path
+                        url=location,
+                        line=line_no,
                         remediation="Use environment variables or a secret manager. Do not commit secrets.",
                         tags=rule["tags"] + ["sast"],
                     )

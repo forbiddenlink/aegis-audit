@@ -1,19 +1,25 @@
-from typing import List
+from typing import Any, Dict, List
 import re
 from aegisaudit.models import ScanArtifact, Finding, Severity
 from aegisaudit.config import AegisConfig
+from aegisaudit.sast.secrets import PATTERNS as SAST_PATTERNS
+
+# Single source of truth for the AWS key shape. It was previously duplicated
+# here and in sast/secrets.py, so the same false-positive bug existed twice and
+# had to be found twice.
+AWS_ACCESS_KEY_REGEX: str = SAST_PATTERNS["AWS Access Key"]["regex"]
 
 
 def check_secrets(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
-    findings = []
+    findings: List[Finding] = []
 
     # Analyze body content only
     content = artifact.body_snippet
 
     # Regex Patterns for Secrets/PII
-    patterns = {
+    patterns: Dict[str, Dict[str, Any]] = {
         "AWS Access Key": {
-            "regex": r"(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])",
+            "regex": AWS_ACCESS_KEY_REGEX,
             "severity": Severity.HIGH,
             "description": "Possible AWS Access Key ID found in HTML.",
             "tags": ["secrets", "aws"],

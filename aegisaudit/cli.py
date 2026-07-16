@@ -1,7 +1,7 @@
 import typer
 import asyncio
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 from datetime import datetime
 
 from rich.console import Console
@@ -9,7 +9,8 @@ from rich.table import Table
 
 from aegisaudit.config import load_config, AegisConfig
 from aegisaudit.fetcher import Fetcher
-from aegisaudit.models import Severity
+from aegisaudit.gating import gate_failure_reason, parse_formats, parse_severity
+from aegisaudit.models import ScanResult, Severity
 from aegisaudit.runner import Runner
 from aegisaudit.reporters import generate_json_report, generate_sarif_report, generate_html_report
 from aegisaudit.history import ScanHistory
@@ -19,9 +20,63 @@ from aegisaudit.sast.scanner import SASTScanner
 app = typer.Typer(help="AegisAudit - Security posture reports for modern web apps.")
 console = Console()
 
+# Exit codes. See aegisaudit/gating.py for the rationale.
+EXIT_OK = 0
+EXIT_GATE_FAILED = 1
+EXIT_USAGE_ERROR = 2
+
+
+def _resolve_formats(format_values: List[str]) -> Set[str]:
+    """Parse --format, converting a bad value into a usage error (exit 2)."""
+    try:
+        return parse_formats(format_values)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=EXIT_USAGE_ERROR) from None
+
+
+def _resolve_fail_on(fail_on: Optional[str]) -> Optional[Severity]:
+    if fail_on is None:
+        return None
+    try:
+        return parse_severity(fail_on)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=EXIT_USAGE_ERROR) from None
+
+
+def _write_reports(result: ScanResult, out: Path, formats: Set[str]) -> None:
+    """Write every requested report format."""
+    out.mkdir(parents=True, exist_ok=True)
+
+    if "json" in formats:
+        path = out / "report.json"
+        generate_json_report(result, path)
+        console.print(f"JSON Report: [link=file://{path}]{path}[/link]")
+
+    if "sarif" in formats:
+        path = out / "report.sarif"
+        generate_sarif_report(result, path)
+        console.print(f"SARIF Report: [link=file://{path}]{path}[/link]")
+
+    if "html" in formats:
+        path = out / "report.html"
+        generate_html_report(result, path)
+        console.print(f"HTML Report: [link=file://{path}]{path}[/link]")
+
+
+def _apply_gate(
+    result: ScanResult, fail_on: Optional[Severity], fail_under: Optional[float]
+) -> None:
+    """Fail the build if the result trips the configured gate."""
+    reason = gate_failure_reason(result, fail_on=fail_on, fail_under=fail_under)
+    if reason:
+        console.print(f"\n[bold red]FAILED:[/bold red] {reason}")
+        raise typer.Exit(code=EXIT_GATE_FAILED)
+
 
 @app.callback()
-def main():
+def main() -> None:
     """
     AegisAudit security auditor.
     """
@@ -31,25 +86,23 @@ async def run_scan(
     urls: List[str],
     config: AegisConfig,
     output_dir: Path,
-    output_format: List[str],
+    formats: Set[str],
     save_history: bool = True,
-    webhook: str = None,
-):
+    webhook: Optional[str] = None,
+) -> Optional[ScanResult]:
     console.print(f"[bold green]Starting scan against {len(urls)} targets...[/bold green]")
     fetcher = Fetcher(config)
-    artifacts = []
 
     try:
-        for url in urls:
-            console.print(f"Fetching {url}...")
-            artifact = await fetcher.fetch(url)
-            if artifact:
-                artifacts.append(artifact)
-                console.print(f"  [green]✓[/green] {artifact.status_code} {artifact.final_url}")
-            else:
-                console.print("  [red]✗[/red] Failed to fetch")
+        artifacts = await fetcher.fetch_many(urls)
     finally:
         await fetcher.close()
+
+    for artifact in artifacts:
+        console.print(f"  [green]✓[/green] {artifact.status_code} {artifact.final_url}")
+    failed = len(urls) - len(artifacts)
+    if failed:
+        console.print(f"  [red]✗[/red] {failed} of {len(urls)} target(s) failed to fetch")
 
     if artifacts:
         console.print(f"\n[bold]Running checks on {len(artifacts)} artifacts...[/bold]")
@@ -86,32 +139,22 @@ async def run_scan(
         else:
             console.print("[green]No issues found![/green]")
 
-        # Generate Reports
-        output_dir.mkdir(parents=True, exist_ok=True)
+        _write_reports(result, output_dir, formats)
 
-        if "json" in output_format or "all" in output_format:
-            json_path = output_dir / "report.json"
-            generate_json_report(result, json_path)
-            console.print(f"JSON Report: [link=file://{json_path}]{json_path}[/link]")
-
-        if "sarif" in output_format or "all" in output_format:
-            sarif_path = output_dir / "report.sarif"
-            generate_sarif_report(result, sarif_path)
-            console.print(f"SARIF Report: [link=file://{sarif_path}]{sarif_path}[/link]")
-
-        if "html" in output_format or "all" in output_format:
-            html_path = output_dir / "report.html"
-            generate_html_report(result, html_path)
-            console.print(f"HTML Report: [link=file://{html_path}]{html_path}[/link]")
-
-            # Save History
-            history = ScanHistory()
-            history.add_scan(result)
+        # History is a property of having run a scan, not of having asked for
+        # an HTML report. This call used to sit inside the `if "html"` branch,
+        # so `--format json` silently recorded no trend data at all.
+        if save_history:
+            ScanHistory().add_scan(result)
             console.print("[dim]Scan saved to history.[/dim]")
 
         if webhook:
             send_webhook(webhook, result)
             console.print("[dim]Sent webhook notification.[/dim]")
+
+        return result
+
+    return None
 
 
 @app.command()
@@ -123,11 +166,22 @@ def audit(
     format: List[str] = typer.Option(
         ["all"], "--format", help="Output formats: json, html, sarif, all"
     ),
-):
+    fail_on: Optional[str] = typer.Option(
+        None,
+        "--fail-on",
+        help="Exit 1 if any finding is at or above this severity (info|low|medium|high|critical).",
+    ),
+    fail_under: Optional[float] = typer.Option(
+        None, "--fail-under", help="Exit 1 if the overall score is below this value (0-100)."
+    ),
+) -> None:
     """
     Run a static analysis (SAST) audit on a local directory.
     Checks for secrets, dependency vulnerabilities, and insecure code patterns.
     """
+    formats = _resolve_formats(format)
+    fail_on_severity = _resolve_fail_on(fail_on)
+
     console.print(f"[bold green]Starting audit of {directory}...[/bold green]")
 
     scanner = SASTScanner()
@@ -136,6 +190,7 @@ def audit(
 
     # Display Summary
     console.print(f"\n[bold]Audit Complete found {len(findings)} issues.[/bold]")
+    console.print(f"Overall Score: [bold cyan]{result.summary.overall_score:.1f}[/bold cyan] / 100")
     if findings:
         table = Table(title="Audit Findings")
         table.add_column("Severity", style="bold")
@@ -161,28 +216,8 @@ def audit(
     else:
         console.print("[green]No issues found![/green]")
 
-    # Generate Reports
-    out.mkdir(parents=True, exist_ok=True)
-
-    # Flatten format list (handle comma-separated values like "sarif,html")
-    formats = []
-    for f in format:
-        formats.extend(f.split(","))
-
-    if "json" in formats or "all" in formats:
-        json_path = out / "report.json"
-        generate_json_report(result, json_path)
-        console.print(f"JSON Report: [link=file://{json_path}]{json_path}[/link]")
-
-    if "sarif" in formats or "all" in formats:
-        sarif_path = out / "report.sarif"
-        generate_sarif_report(result, sarif_path)
-        console.print(f"SARIF Report: [link=file://{sarif_path}]{sarif_path}[/link]")
-
-    if "html" in formats or "all" in formats:
-        html_path = out / "report.html"
-        generate_html_report(result, html_path)
-        console.print(f"HTML Report: [link=file://{html_path}]{html_path}[/link]")
+    _write_reports(result, out, formats)
+    _apply_gate(result, fail_on_severity, fail_under)
 
 
 @app.command()
@@ -204,10 +239,21 @@ def scan(
     webhook: Optional[str] = typer.Option(
         None, "--webhook", help="Slack/Discord webhook URL for alerts"
     ),
-):
+    fail_on: Optional[str] = typer.Option(
+        None,
+        "--fail-on",
+        help="Exit 1 if any finding is at or above this severity (info|low|medium|high|critical).",
+    ),
+    fail_under: Optional[float] = typer.Option(
+        None, "--fail-under", help="Exit 1 if the overall score is below this value (0-100)."
+    ),
+) -> None:
     """
     Run a security posture scan against target URLs.
     """
+    formats = _resolve_formats(format)
+    fail_on_severity = _resolve_fail_on(fail_on)
+
     config = load_config(config_file)
     target_urls = []
 
@@ -220,10 +266,8 @@ def scan(
             target_urls.extend(lines)
 
     if not target_urls:
-        console.print(
-            "[red]No targets specified if strict mode enabled.[/red] Provide --url or --file."
-        )
-        raise typer.Exit(code=1)
+        console.print("[red]No targets specified.[/red] Provide --url or --file.")
+        raise typer.Exit(code=EXIT_USAGE_ERROR)
 
     # Probing Logic: Expand targets
     if probe:
@@ -240,16 +284,25 @@ def scan(
             f"[yellow]Probing enabled. Target list expanded to {len(target_urls)} URLs.[/yellow]"
         )
 
-    asyncio.run(
+    result = asyncio.run(
         run_scan(
             target_urls,
             config,
             output_dir=out,
-            output_format=format,
+            formats=formats,
             save_history=True,
             webhook=webhook,
         )
     )
+
+    if result is None:
+        # Every target failed to fetch. That is a scan failure, not a clean
+        # bill of health -- exiting 0 here would let a DNS outage read as
+        # "no issues found".
+        console.print("[red]No targets could be fetched.[/red]")
+        raise typer.Exit(code=EXIT_USAGE_ERROR)
+
+    _apply_gate(result, fail_on_severity, fail_under)
 
 
 if __name__ == "__main__":

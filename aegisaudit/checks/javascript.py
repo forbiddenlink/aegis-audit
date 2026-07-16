@@ -1,18 +1,18 @@
-from typing import List
+from typing import Any, Dict, List
 import re
 from aegisaudit.models import ScanArtifact, Finding, Severity
 from aegisaudit.config import AegisConfig
 
 
 def check_javascript(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
-    findings = []
+    findings: List[Finding] = []
 
     if "text/html" not in artifact.content_type:
         return findings
 
     # Passive regex signatures for common libraries
     # NOTE: This is "best effort" passive detection. Active scanning would try to Execute() JS.
-    signatures = {
+    signatures: Dict[str, Dict[str, Any]] = {
         "jQuery": {
             "pattern": r"jquery[.-](\d+\.\d+\.\d+)",
             "vulnerable": lambda v: v.startswith("1.") or v.startswith("2."),  # Broad brush for MVP

@@ -1,4 +1,5 @@
-from typing import List, Callable
+from typing import List, Callable, Tuple, Set
+from urllib.parse import urlparse
 from aegisaudit.models import ScanArtifact, Finding, ScanResult
 from aegisaudit.config import AegisConfig
 from aegisaudit.scoring import calculate_score
@@ -29,6 +30,31 @@ CHECK_MODULES: List[Callable[[ScanArtifact, AegisConfig], List[Finding]]] = [
 ]
 
 
+def dedupe_findings(findings: List[Finding]) -> List[Finding]:
+    """Collapse identical findings raised against the same host.
+
+    --probe expands one target into several same-host URLs (the page, /.env,
+    /.git/HEAD). Every check runs against every artifact, so host-level findings
+    (missing HSTS, missing SPF, a leaked Server header) were emitted once per
+    probe URL -- inflating both the report and the score deduction.
+
+    Two findings are "the same issue" when they share an id, a host, and a
+    description. The description keeps genuinely distinct findings apart: two
+    external scripts each missing SRI differ in their described src, and two
+    different sites missing HSTS differ in their host, so both are preserved.
+    """
+    seen: Set[Tuple[str, str, str]] = set()
+    result: List[Finding] = []
+    for finding in findings:
+        host = urlparse(finding.url).netloc
+        key = (finding.id, host, finding.description)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(finding)
+    return result
+
+
 class Runner:
     def __init__(self, config: AegisConfig):
         self.config = config
@@ -41,6 +67,8 @@ class Runner:
                 findings = check_func(artifact, self.config)
                 all_findings.extend(findings)
 
+        all_findings = dedupe_findings(all_findings)
+
         # Calculate Summary using Scoring Engine
         summary = calculate_score(all_findings)
 
@@ -48,5 +76,5 @@ class Runner:
             targets=[a.url for a in artifacts],
             findings=all_findings,
             summary=summary,
-            config_snapshot=self.config.dict(),
+            config_snapshot=self.config.model_dump(mode="json"),
         )

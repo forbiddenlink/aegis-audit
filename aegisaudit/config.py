@@ -19,6 +19,11 @@ class LimitsConfig(BaseModel):
     rate_per_sec: float = 2.0
     timeout_sec: float = 10.0
     max_html_bytes: int = 200_000
+    # How many requests may be in flight at once. Distinct from rate_per_sec:
+    # concurrency is "how many parallel", rate is "how fast each". They were
+    # conflated into one Semaphore(int(rate_per_sec)), which became Semaphore(0)
+    # and hung whenever the rate dropped below 1.
+    max_concurrency: int = 10
 
 
 class AegisConfig(BaseModel):
