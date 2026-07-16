@@ -14,7 +14,7 @@ Thank you for your interest in contributing to AegisAudit! This document provide
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/aegisaudit.git
+   git clone https://github.com/forbiddenlink/aegis-audit.git
    cd aegisaudit
    ```
 
@@ -221,7 +221,7 @@ aegisaudit/
 
 ## Getting Help
 
-- **Issues**: Check [existing issues](https://github.com/your-username/aegisaudit/issues) or create a new one
+- **Issues**: Check [existing issues](https://github.com/forbiddenlink/aegis-audit/issues) or create a new one
 - **Discussions**: Use GitHub Discussions for questions and ideas
 - **Documentation**: See `docs/` directory for detailed documentation
 

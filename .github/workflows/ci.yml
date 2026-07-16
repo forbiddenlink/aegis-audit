@@ -45,7 +45,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=aegisaudit --cov-report=xml --cov-report=term-missing
+          pytest --cov=aegisaudit --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
@@ -74,10 +74,16 @@ jobs:
         run: |
           pip install .
 
+      # This step is the tool's own dogfood gate, so it must be allowed to fail.
+      # It was previously continue-on-error, which hid a crash: the HTML
+      # reporter raised FileNotFoundError for every installed copy of the
+      # package (the Jinja2 template was not shipped in the wheel) and CI stayed
+      # green for the entire life of the bug.
+      #
+      # Suppressions live in .aegisignore.
       - name: Run self-scan on repository
-        continue-on-error: true  # Don't fail CI if security issues are found
         run: |
-          aegis audit . --out ./scan-results --format sarif,html
+          aegis audit . --out ./scan-results --format sarif,html --fail-on high
 
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v4

@@ -34,10 +34,15 @@ jobs:
         run: |
           twine check dist/*
 
+      # Trusted publishing (OIDC): no API token, nothing long-lived to leak.
+      # Passing `password:` here would make the action use twine with that
+      # token and ignore OIDC entirely -- which is what it used to do, despite
+      # the id-token permission above.
+      #
+      # Requires a trusted publisher configured on PyPI for this
+      # repository + workflow. See docs/RELEASING.md.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
 
   publish-docker:
     name: Build and Push Docker Image

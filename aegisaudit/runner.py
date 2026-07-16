@@ -48,5 +48,5 @@ class Runner:
             targets=[a.url for a in artifacts],
             findings=all_findings,
             summary=summary,
-            config_snapshot=self.config.dict(),
+            config_snapshot=self.config.model_dump(mode="json"),
         )

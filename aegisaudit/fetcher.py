@@ -1,10 +1,12 @@
 import httpx
 import asyncio
 from typing import Optional
-from aegisaudit.models import ScanArtifact
+from aegisaudit.models import ScanArtifact, _tool_version
 from aegisaudit.config import AegisConfig
 
-DEFAULT_USER_AGENT = "AegisAudit/0.1.0 (+https://github.com/your/aegisaudit)"
+# Identify the scanner honestly, and point operators at the project so they can
+# tell an audit apart from an attack in their logs.
+DEFAULT_USER_AGENT = f"AegisAudit/{_tool_version()} (+https://github.com/forbiddenlink/aegis-audit)"
 
 
 class Fetcher:
