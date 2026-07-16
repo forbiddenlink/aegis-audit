@@ -8,3 +8,7 @@ tests/
 
 # Lockfiles are hashes, not secrets.
 uv.lock
+
+# A suppression-config file naturally names the key-shaped patterns it
+# suppresses; scanning it just reports them back.
+.gitleaksignore
