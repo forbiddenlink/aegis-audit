@@ -19,18 +19,32 @@ class Fetcher:
             headers={"User-Agent": DEFAULT_USER_AGENT},
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=10),
         )
-        self.semaphore = asyncio.Semaphore(
-            int(config.limits.rate_per_sec)
-        )  # Rough rate limit approx
+        # Concurrency budget, always at least 1 so the fetcher can never block
+        # on an empty semaphore.
+        self.semaphore = asyncio.Semaphore(max(1, config.limits.max_concurrency))
 
     async def close(self):
         await self.client.aclose()
 
+    async def fetch_many(self, urls: list[str]) -> list[ScanArtifact]:
+        """Fetch every URL concurrently, bounded by the concurrency budget.
+
+        Replaces a caller-side `for url: await fetch(url)` loop that ran the
+        requests one at a time, so neither the async client nor the semaphore
+        did anything. Failed fetches are dropped, not raised, so one dead host
+        does not sink the batch.
+        """
+        results = await asyncio.gather(*(self.fetch(url) for url in urls))
+        return [artifact for artifact in results if artifact is not None]
+
     async def fetch(self, url: str) -> Optional[ScanArtifact]:
         async with self.semaphore:
             try:
-                # Basic rate limiting delay
-                await asyncio.sleep(1.0 / self.config.limits.rate_per_sec)
+                # Basic rate-limit delay. Guard against a non-positive rate so a
+                # misconfigured value can't divide by zero or sleep forever.
+                rate = self.config.limits.rate_per_sec
+                if rate > 0:
+                    await asyncio.sleep(1.0 / rate)
 
                 response = await self.client.get(url)
 

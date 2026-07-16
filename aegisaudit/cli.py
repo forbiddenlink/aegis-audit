@@ -92,19 +92,17 @@ async def run_scan(
 ) -> Optional[ScanResult]:
     console.print(f"[bold green]Starting scan against {len(urls)} targets...[/bold green]")
     fetcher = Fetcher(config)
-    artifacts = []
 
     try:
-        for url in urls:
-            console.print(f"Fetching {url}...")
-            artifact = await fetcher.fetch(url)
-            if artifact:
-                artifacts.append(artifact)
-                console.print(f"  [green]✓[/green] {artifact.status_code} {artifact.final_url}")
-            else:
-                console.print("  [red]✗[/red] Failed to fetch")
+        artifacts = await fetcher.fetch_many(urls)
     finally:
         await fetcher.close()
+
+    for artifact in artifacts:
+        console.print(f"  [green]✓[/green] {artifact.status_code} {artifact.final_url}")
+    failed = len(urls) - len(artifacts)
+    if failed:
+        console.print(f"  [red]✗[/red] {failed} of {len(urls)} target(s) failed to fetch")
 
     if artifacts:
         console.print(f"\n[bold]Running checks on {len(artifacts)} artifacts...[/bold]")
