@@ -1,0 +1,5 @@
+# Fingerprints gitleaks should not flag. These are deliberately fake AWS key
+# IDs used as test fixtures to prove the secret detectors fire. They are not
+# real credentials (AKIAIOSFODNN7EXAMPLE is AWS's own documented example; the
+# ASIA... value is a throwaway). See tests/test_secret_patterns.py.
+tests/test_secret_patterns.py:aws-access-token:25
