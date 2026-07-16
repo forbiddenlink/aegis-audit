@@ -1,106 +1,155 @@
-import subprocess
+"""Dependency vulnerability scanning.
+
+Shells out to pip-audit (Python) and npm audit (Node) and turns their JSON into
+findings. The parsing is split into pure functions so it is testable without the
+network or either tool installed.
+
+Replaces a shell-out to `safety`, whose `check` command is deprecated and whose
+`scan` command is login-gated -- and which was never a declared dependency, so
+it silently produced nothing. pip-audit (PyPA / Trail of Bits, Apache-2.0) is
+the maintained, anonymous, free replacement.
+"""
+
 import json
+import re
+import subprocess
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
+
 from aegisaudit.models import Finding, Severity
+
+# npm reports a real severity; pip-audit's sources (OSV / PyPI Advisory DB) do
+# not attach a normalized one, so a Python dependency vuln with no severity is
+# reported as MEDIUM rather than overclaimed as HIGH.
+NPM_SEVERITY = {
+    "critical": Severity.CRITICAL,
+    "high": Severity.HIGH,
+    "moderate": Severity.MEDIUM,
+    "low": Severity.LOW,
+    "info": Severity.INFO,
+}
+
+_GHSA_IN_URL = re.compile(r"GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}", re.IGNORECASE)
+
+
+def _run(cmd: List[str], cwd: Path) -> Dict[str, Any]:
+    """Run a scanner and return its parsed JSON, or {} if it could not run.
+
+    pip-audit and npm audit exit non-zero (1) precisely when they FIND
+    vulnerabilities, and still write their full JSON report to stdout. So a
+    non-zero exit is not a failure -- only unparseable stdout (tool absent,
+    crashed, network error) is, and that degrades to an empty result.
+    """
+    try:
+        result = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
+    except FileNotFoundError:
+        return {}
+    if not result.stdout:
+        return {}
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+
+
+def parse_pip_audit(data: Dict[str, Any], location: str) -> List[Finding]:
+    """Turn pip-audit --format json output into findings."""
+    findings: List[Finding] = []
+    for dep in data.get("dependencies", []):
+        name = dep.get("name", "unknown")
+        version = dep.get("version", "unknown")
+        for vuln in dep.get("vulns", []):
+            vuln_id = vuln.get("id", "unknown")
+            aliases = vuln.get("aliases", [])
+            fixes = vuln.get("fix_versions", [])
+            ids = ", ".join([vuln_id, *aliases])
+            description = vuln.get("description", "").strip()
+
+            remediation = (
+                f"Upgrade {name} to {', '.join(fixes)} or later."
+                if fixes
+                else f"No fixed version is available yet for {name}; review the advisory."
+            )
+            findings.append(
+                Finding(
+                    id=f"vuln-pypi-{name}-{vuln_id}",
+                    # pip-audit does not rate severity; report a neutral MEDIUM
+                    # rather than overclaim.
+                    severity=Severity.MEDIUM,
+                    title=f"Vulnerable Python package: {name} {version}",
+                    description=f"{ids}: {description}" if description else ids,
+                    url=location,
+                    remediation=remediation,
+                    references=[a for a in aliases if a.upper().startswith(("CVE-", "GHSA-"))],
+                    tags=["sast", "dependency", "python"],
+                )
+            )
+    return findings
+
+
+def parse_npm_audit(data: Dict[str, Any], location: str) -> List[Finding]:
+    """Turn npm audit --json output (npm v7+) into findings."""
+    findings: List[Finding] = []
+    for pkg_name, entry in data.get("vulnerabilities", {}).items():
+        for via in entry.get("via", []):
+            # A string `via` is a pointer to another vulnerable package; that
+            # package's own entry carries the real advisory, so skip it here to
+            # avoid double-counting.
+            if not isinstance(via, dict):
+                continue
+
+            severity = NPM_SEVERITY.get(via.get("severity", ""), Severity.MEDIUM)
+            title = via.get("title", "Known vulnerability")
+            url = via.get("url", "")
+            ghsa = _GHSA_IN_URL.search(url)
+            advisory_id = ghsa.group(0) if ghsa else via.get("source", "unknown")
+
+            description = f"{title} ({advisory_id})."
+            if via.get("range"):
+                description += f" Affected range: {via['range']}."
+
+            findings.append(
+                Finding(
+                    id=f"vuln-npm-{pkg_name}-{advisory_id}",
+                    severity=severity,
+                    title=f"Vulnerable npm package: {pkg_name}",
+                    description=description,
+                    url=location,
+                    remediation="Run 'npm audit fix', or upgrade to a version outside the affected range.",
+                    references=[url] if url else [],
+                    tags=["sast", "dependency", "node"],
+                )
+            )
+    return findings
 
 
 def check_python_dependencies(path: Path) -> List[Finding]:
-    findings = []
-    # Check for requirements.txt or pyproject.toml
-    if not (path / "requirements.txt").exists() and not (path / "pyproject.toml").exists():
+    requirements = path / "requirements.txt"
+    if requirements.exists():
+        # --no-deps + --disable-pip: scan exactly the pinned requirements
+        # without building a throwaway venv. (Still queries OSV/PyPI over the
+        # network for the advisory data itself.)
+        cmd = [
+            "pip-audit",
+            "-r",
+            "requirements.txt",
+            "--format",
+            "json",
+            "--no-deps",
+            "--disable-pip",
+        ]
+        location = "requirements.txt"
+    elif (path / "pyproject.toml").exists():
+        # Project-path mode resolves and scans pyproject.toml.
+        cmd = ["pip-audit", "--format", "json"]
+        location = "pyproject.toml"
+    else:
         return []
 
-    try:
-        # Run safety check
-        # We assume safety is installed in the same env
-        result = subprocess.run(
-            ["safety", "check", "--json"], cwd=str(path), capture_output=True, text=True
-        )
-
-        if result.stdout:
-            try:
-                vulns = json.loads(result.stdout)
-                # Parse safety JSON output (structure varies by version, handling common 2.x/3.x)
-                if isinstance(vulns, dict) and "vulnerabilities" in vulns:
-                    vulns = vulns["vulnerabilities"]
-
-                for v in vulns:
-                    # Safety format handling
-                    pkg = v.get("package_name") or v.get("name", "unknown")
-                    ver = v.get("installed_version") or v.get("version", "unknown")
-                    desc = v.get("vulnerability_spec", "") or v.get("description", "")
-
-                    findings.append(
-                        Finding(
-                            id=f"vuln-pypi-{pkg}",
-                            severity=Severity.HIGH,
-                            title=f"Vulnerable Python Package: {pkg}",
-                            description=f"Package {pkg} ({ver}) has known vulnerabilities: {desc}",
-                            url=str(path / "requirements.txt"),
-                            remediation="Upgrade the package to a safe version.",
-                            tags=["sast", "dependency", "python"],
-                        )
-                    )
-            except json.JSONDecodeError:
-                pass
-    except FileNotFoundError:
-        pass  # Safety not installed
-
-    return findings
+    return parse_pip_audit(_run(cmd, path), location)
 
 
 def check_node_dependencies(path: Path) -> List[Finding]:
-    findings = []
-    # Check for package.json
     if not (path / "package.json").exists():
         return []
-
-    try:
-        # Run npm audit
-        result = subprocess.run(
-            ["npm", "audit", "--json"], cwd=str(path), capture_output=True, text=True
-        )
-
-        if result.stdout:
-            try:
-                report = json.loads(result.stdout)
-                if "advisories" in report:  # Older npm
-                    # TODO: Parse advisories for detailed findings
-                    pass
-                elif "vulnerabilities" in report:  # Newer npm
-                    # This structure is complex (nested), simple flat parsing for MVP
-                    # TODO: implement full recursive parse if needed
-                    pass
-
-                # Simplified parsing for 'advisories' style or 'metadata' summary
-                metadata = report.get("metadata", {}).get("vulnerabilities", {})
-                if metadata:
-                    for severity, count in metadata.items():
-                        if count > 0:
-                            sev_enum = Severity.LOW
-                            if severity == "high":
-                                sev_enum = Severity.HIGH
-                            elif severity == "critical":
-                                sev_enum = Severity.CRITICAL
-                            elif severity == "moderate":
-                                sev_enum = Severity.MEDIUM
-
-                            findings.append(
-                                Finding(
-                                    id=f"vuln-npm-{severity}",
-                                    severity=sev_enum,
-                                    title=f"NPM Vulnerabilities ({severity})",
-                                    description=f"Found {count} {severity} vulnerabilities in Node.js dependencies.",
-                                    url=str(path / "package.json"),
-                                    remediation="Run 'npm audit fix' to resolve vulnerabilities.",
-                                    tags=["sast", "dependency", "node"],
-                                )
-                            )
-
-            except json.JSONDecodeError:
-                pass
-    except FileNotFoundError:
-        pass  # npm not installed
-
-    return findings
+    return parse_npm_audit(_run(["npm", "audit", "--json"], path), "package.json")

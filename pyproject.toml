@@ -26,6 +26,11 @@ dependencies = [
     "jinja2>=3.1.0",
     "pyyaml>=6.0.0",
     "dnspython>=2.4.0",
+    # Python dependency vulnerability scanning. Declared so `aegis audit`
+    # actually runs the check rather than silently no-opping when the binary is
+    # absent (the failure mode of the old `safety` shell-out). npm audit stays
+    # best-effort since Node cannot be bundled.
+    "pip-audit>=2.7.0",
 ]
 
 [project.urls]
