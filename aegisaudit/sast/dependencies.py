@@ -13,8 +13,9 @@ the maintained, anonymous, free replacement.
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from aegisaudit.models import Finding, Severity
 
@@ -124,25 +125,36 @@ def parse_npm_audit(data: Dict[str, Any], location: str) -> List[Finding]:
     return findings
 
 
-def check_python_dependencies(path: Path) -> List[Finding]:
-    requirements = path / "requirements.txt"
-    if requirements.exists():
+def pip_audit_command(requirements_file: Optional[str]) -> List[str]:
+    """Build the pip-audit argv.
+
+    Runs pip-audit through the current interpreter (``python -m pip_audit``)
+    rather than a bare ``pip-audit`` on PATH. pip-audit is a declared dependency
+    so it is installed in the same environment as aegis, but a bare argv only
+    resolves when that environment's bin directory is on PATH -- which is not
+    guaranteed when aegis is launched by absolute path or from a wrapper. The
+    module form always resolves, so a requirements.txt no longer silently
+    produces zero dependency findings.
+
+    Pass a requirements file for requirements mode, or None to scan the project
+    (pyproject.toml) at the working directory.
+    """
+    cmd = [sys.executable, "-m", "pip_audit", "--format", "json"]
+    if requirements_file is not None:
         # --no-deps + --disable-pip: scan exactly the pinned requirements
         # without building a throwaway venv. (Still queries OSV/PyPI over the
         # network for the advisory data itself.)
-        cmd = [
-            "pip-audit",
-            "-r",
-            "requirements.txt",
-            "--format",
-            "json",
-            "--no-deps",
-            "--disable-pip",
-        ]
+        cmd += ["-r", requirements_file, "--no-deps", "--disable-pip"]
+    return cmd
+
+
+def check_python_dependencies(path: Path) -> List[Finding]:
+    if (path / "requirements.txt").exists():
+        cmd = pip_audit_command("requirements.txt")
         location = "requirements.txt"
     elif (path / "pyproject.toml").exists():
         # Project-path mode resolves and scans pyproject.toml.
-        cmd = ["pip-audit", "--format", "json"]
+        cmd = pip_audit_command(None)
         location = "pyproject.toml"
     else:
         return []

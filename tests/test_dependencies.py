@@ -7,8 +7,10 @@ branches. These tests drive pure parsers over the real JSON shapes emitted by
 pip-audit and npm audit, so they run without the network or either tool present.
 """
 
+import sys
+
 from aegisaudit.models import Severity
-from aegisaudit.sast.dependencies import parse_npm_audit, parse_pip_audit
+from aegisaudit.sast.dependencies import parse_npm_audit, parse_pip_audit, pip_audit_command
 
 # Trimmed but structurally real pip-audit --format json output.
 PIP_AUDIT_JSON = {
@@ -74,6 +76,29 @@ NPM_AUDIT_JSON = {
         }
     },
 }
+
+
+class TestPipAuditCommand:
+    """pip-audit is a declared dependency, so it is installed alongside aegis --
+    but a bare ["pip-audit", ...] argv only resolves if that bin directory is on
+    PATH. Invoked by absolute path (or from a launcher that doesn't inherit the
+    venv PATH), it wasn't found and the scan silently produced zero dependency
+    findings. Running it through the current interpreter as a module makes it
+    resolve regardless of PATH."""
+
+    def test_runs_pip_audit_through_the_current_interpreter(self):
+        cmd = pip_audit_command("requirements.txt")
+        assert cmd[:3] == [sys.executable, "-m", "pip_audit"]
+
+    def test_requirements_mode_passes_the_file(self):
+        cmd = pip_audit_command("requirements.txt")
+        assert "-r" in cmd and "requirements.txt" in cmd
+        assert "--no-deps" in cmd
+
+    def test_project_mode_has_no_requirements_flag(self):
+        cmd = pip_audit_command(None)
+        assert "-r" not in cmd
+        assert cmd[:3] == [sys.executable, "-m", "pip_audit"]
 
 
 class TestPipAuditParsing:
