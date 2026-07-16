@@ -40,6 +40,22 @@ class TestAegisIgnore:
         (tmp_path / ".aegisignore").write_text("tests/\n")
         assert scan(tmp_path) == []
 
+    def test_wildcard_does_not_cross_directory_boundaries(self, tmp_path):
+        """`src/*.py` matches files directly under src, not deeper ones -- the
+        `*` must not span a path separator (gitignore semantics). fnmatch got
+        this wrong and suppressed nested files a user did not exclude."""
+        (tmp_path / "src" / "deep").mkdir(parents=True)
+        (tmp_path / "src" / "deep" / "nested.py").write_text(AWS_KEY)
+        (tmp_path / ".aegisignore").write_text("src/*.py\n")
+        # The nested file is NOT a direct child of src/, so it is still scanned.
+        assert len(scan(tmp_path)) == 1
+
+    def test_wildcard_matches_direct_children(self, tmp_path):
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text(AWS_KEY)
+        (tmp_path / ".aegisignore").write_text("src/*.py\n")
+        assert scan(tmp_path) == []
+
     def test_non_matching_pattern_does_not_suppress(self, tmp_path):
         (tmp_path / "app.py").write_text(AWS_KEY)
         (tmp_path / ".aegisignore").write_text("docs/*\n")

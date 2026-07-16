@@ -4,6 +4,17 @@ from typing import List, Optional
 from aegisaudit.models import Finding, Severity
 
 
+def _is_inert(stmt: ast.stmt) -> bool:
+    """True if a statement does nothing: `pass` or a bare `...`."""
+    if isinstance(stmt, ast.Pass):
+        return True
+    return (
+        isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Constant)
+        and stmt.value.value is Ellipsis
+    )
+
+
 class SecurityVisitor(ast.NodeVisitor):
     def __init__(self, file_path: Path, display_path: Optional[str] = None) -> None:
         self.file_path = file_path
@@ -25,16 +36,18 @@ class SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
-        # Check for blind except: except: pass
-        if node.type is None:
-            # Check if body is just 'pass' or '...'
-            if len(node.body) == 1 and isinstance(node.body[0], (ast.Pass, ast.Expr)):
-                self._add_finding(
-                    node.lineno,
-                    "blind-except",
-                    Severity.LOW,
-                    "Blind exception handler (except: pass)",
-                )
+        # A bare `except:` whose body does nothing swallows every error. Only a
+        # `pass` or an `...` (Ellipsis) body is inert; a handler that calls
+        # something -- `except: log_error()` -- actually handles the error and
+        # must not be flagged, so match ast.Expr only when its value is the
+        # Ellipsis constant rather than any expression statement.
+        if node.type is None and len(node.body) == 1 and _is_inert(node.body[0]):
+            self._add_finding(
+                node.lineno,
+                "blind-except",
+                Severity.LOW,
+                "Blind exception handler (except: pass)",
+            )
         self.generic_visit(node)
 
     def _add_finding(self, lineno: int, id: str, severity: Severity, title: str) -> None:

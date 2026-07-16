@@ -35,8 +35,10 @@ class Finding(BaseModel):
     url: str
     # 1-indexed source line, when the finding refers to a location in a file.
     # SARIF consumers need this as a real region: without it, GitHub anchors the
-    # alert to line 1 of the file rather than the offending line.
-    line: Optional[int] = None
+    # alert to line 1 of the file rather than the offending line. A SARIF
+    # startLine must be >= 1, so reject 0 or negative at construction rather
+    # than emit an invalid region.
+    line: Optional[int] = Field(default=None, ge=1)
     remediation: Optional[str] = None
     references: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)

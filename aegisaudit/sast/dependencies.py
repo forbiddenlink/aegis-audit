@@ -33,17 +33,24 @@ NPM_SEVERITY = {
 _GHSA_IN_URL = re.compile(r"GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}", re.IGNORECASE)
 
 
+# Scanners resolve advisories over the network; cap the wait so a hung request
+# or an unresponsive project resolution can't stall a scan indefinitely.
+_SCANNER_TIMEOUT_SEC = 120
+
+
 def _run(cmd: List[str], cwd: Path) -> Dict[str, Any]:
     """Run a scanner and return its parsed JSON, or {} if it could not run.
 
     pip-audit and npm audit exit non-zero (1) precisely when they FIND
     vulnerabilities, and still write their full JSON report to stdout. So a
     non-zero exit is not a failure -- only unparseable stdout (tool absent,
-    crashed, network error) is, and that degrades to an empty result.
+    crashed, timed out, network error) is, and that degrades to an empty result.
     """
     try:
-        result = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
-    except FileNotFoundError:
+        result = subprocess.run(
+            cmd, cwd=str(cwd), capture_output=True, text=True, timeout=_SCANNER_TIMEOUT_SEC
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return {}
     if not result.stdout:
         return {}
@@ -125,7 +132,9 @@ def parse_npm_audit(data: Dict[str, Any], location: str) -> List[Finding]:
     return findings
 
 
-def pip_audit_command(requirements_file: Optional[str]) -> List[str]:
+def pip_audit_command(
+    requirements_file: Optional[str], project_path: Optional[str] = None
+) -> List[str]:
     """Build the pip-audit argv.
 
     Runs pip-audit through the current interpreter (``python -m pip_audit``)
@@ -136,8 +145,10 @@ def pip_audit_command(requirements_file: Optional[str]) -> List[str]:
     module form always resolves, so a requirements.txt no longer silently
     produces zero dependency findings.
 
-    Pass a requirements file for requirements mode, or None to scan the project
-    (pyproject.toml) at the working directory.
+    Pass a requirements file for requirements mode, or a project_path to audit a
+    project (pyproject.toml). A bare pip-audit with neither audits the current
+    interpreter's OWN environment -- the scanner's, not the target's -- so
+    project mode must always pass the path.
     """
     cmd = [sys.executable, "-m", "pip_audit", "--format", "json"]
     if requirements_file is not None:
@@ -145,6 +156,8 @@ def pip_audit_command(requirements_file: Optional[str]) -> List[str]:
         # without building a throwaway venv. (Still queries OSV/PyPI over the
         # network for the advisory data itself.)
         cmd += ["-r", requirements_file, "--no-deps", "--disable-pip"]
+    elif project_path is not None:
+        cmd.append(project_path)
     return cmd
 
 
@@ -153,8 +166,11 @@ def check_python_dependencies(path: Path) -> List[Finding]:
         cmd = pip_audit_command("requirements.txt")
         location = "requirements.txt"
     elif (path / "pyproject.toml").exists():
-        # Project-path mode resolves and scans pyproject.toml.
-        cmd = pip_audit_command(None)
+        # Audit the project at `path`, not the scanner's own environment. If
+        # pip-audit cannot resolve the project it degrades to zero findings,
+        # which is honest ("couldn't scan this project") rather than reporting
+        # the runner's dependency vulnerabilities as if they were the target's.
+        cmd = pip_audit_command(None, project_path=".")
         location = "pyproject.toml"
     else:
         return []

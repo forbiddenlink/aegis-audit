@@ -95,10 +95,14 @@ class TestPipAuditCommand:
         assert "-r" in cmd and "requirements.txt" in cmd
         assert "--no-deps" in cmd
 
-    def test_project_mode_has_no_requirements_flag(self):
-        cmd = pip_audit_command(None)
+    def test_project_mode_audits_the_target_path_not_the_runner_env(self):
+        """Bare `pip-audit` audits the interpreter's own environment (the
+        scanner's), not the scanned project. Project mode must pass the target
+        path so the report is about the project, not the runner."""
+        cmd = pip_audit_command(None, project_path="/some/proj")
         assert "-r" not in cmd
         assert cmd[:3] == [sys.executable, "-m", "pip_audit"]
+        assert cmd[-1] == "/some/proj"
 
 
 class TestPipAuditParsing:
