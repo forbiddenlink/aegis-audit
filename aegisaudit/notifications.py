@@ -1,8 +1,10 @@
+from typing import Any, Dict
+
 import httpx
 from aegisaudit.models import ScanResult, Severity
 
 
-def send_webhook(url: str, result: ScanResult):
+def send_webhook(url: str, result: ScanResult) -> None:
     """
     Send a scan summary to a Slack/Discord compatible webhook.
     """
@@ -17,6 +19,7 @@ def send_webhook(url: str, result: ScanResult):
         color = 0xFFFF00  # Yellow
 
     # Discord format
+    payload: Dict[str, Any]
     if "discord" in url:
         payload = {
             "embeds": [

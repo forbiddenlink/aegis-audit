@@ -39,9 +39,8 @@ jobs:
           ruff format --check aegisaudit/ tests/
 
       - name: Run type checking with mypy
-        continue-on-error: true  # Type annotations are work-in-progress
         run: |
-          mypy aegisaudit/ --no-strict-optional --ignore-missing-imports
+          mypy aegisaudit/
 
       - name: Run tests with coverage
         run: |

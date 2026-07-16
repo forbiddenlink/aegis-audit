@@ -4,7 +4,7 @@ from aegisaudit.config import AegisConfig
 
 
 def check_exposure(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
-    findings = []
+    findings: List[Finding] = []
 
     # We only care if the request succeeded (200 OK)
     if artifact.status_code != 200:

@@ -11,7 +11,6 @@ Two bugs motivated these:
 import asyncio
 
 import httpx
-import pytest
 
 from aegisaudit.config import AegisConfig, LimitsConfig
 from aegisaudit.fetcher import Fetcher
@@ -125,7 +124,11 @@ class TestFailuresDoNotSinkTheBatch:
             fetcher = mock_fetcher(config(rate_per_sec=100), handler)
             try:
                 return await fetcher.fetch_many(
-                    ["https://example.com/ok", "https://example.com/boom", "https://example.com/ok2"]
+                    [
+                        "https://example.com/ok",
+                        "https://example.com/boom",
+                        "https://example.com/ok2",
+                    ]
                 )
             finally:
                 await fetcher.close()

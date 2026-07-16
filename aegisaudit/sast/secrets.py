@@ -1,10 +1,10 @@
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from aegisaudit.models import Finding, Severity
 
 # Reuse some patterns from checks/secrets.py but optimized for file scanning
-PATTERNS = {
+PATTERNS: Dict[str, Dict[str, Any]] = {
     "AWS Access Key": {
         # Anchored on the AWS key-ID prefixes. The previous pattern was a bare
         # [A-Z0-9]{20}, which matched any 20-character uppercase alphanumeric

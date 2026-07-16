@@ -7,7 +7,7 @@ from aegisaudit.history import ScanHistory
 from aegisaudit.models import ScanResult
 
 
-def generate_html_report(result: ScanResult, output_path: Path):
+def generate_html_report(result: ScanResult, output_path: Path) -> None:
     """Generate a user-friendly HTML report using Jinja2."""
     # Read the template as package data. Resolving it by walking up from
     # __file__ only worked from a git checkout: once installed, it pointed at

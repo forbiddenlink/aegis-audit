@@ -120,7 +120,10 @@ def resolve_category(finding: Finding) -> str:
 
 def calculate_score(findings: List[Finding]) -> ScanSummary:
     """Score a set of findings on a 0-100 deduction pool."""
-    counts = {severity: 0 for severity in Severity}
+    # str keys (Severity is a str enum) so this matches ScanSummary's
+    # dict[str, int]; indexing with a Severity member still works via str
+    # equality.
+    counts: Dict[str, int] = {severity.value: 0 for severity in Severity}
     deductions: Dict[str, float] = {}
 
     for finding in findings:

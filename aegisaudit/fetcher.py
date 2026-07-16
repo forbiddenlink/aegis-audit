@@ -23,7 +23,7 @@ class Fetcher:
         # on an empty semaphore.
         self.semaphore = asyncio.Semaphore(max(1, config.limits.max_concurrency))
 
-    async def close(self):
+    async def close(self) -> None:
         await self.client.aclose()
 
     async def fetch_many(self, urls: list[str]) -> list[ScanArtifact]:

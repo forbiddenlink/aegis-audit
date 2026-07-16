@@ -44,7 +44,7 @@ def security_severity_for(severity: Severity) -> Optional[str]:
     return SECURITY_SEVERITY_BY_SEVERITY.get(severity)
 
 
-def generate_sarif_report(result: ScanResult, output_path: Path):
+def generate_sarif_report(result: ScanResult, output_path: Path) -> None:
     """Generate a SARIF 2.1.0 report suitable for GitHub code scanning."""
     rules = []
     seen_rules = set()

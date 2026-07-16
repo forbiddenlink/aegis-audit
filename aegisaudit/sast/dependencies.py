@@ -47,9 +47,10 @@ def _run(cmd: List[str], cwd: Path) -> Dict[str, Any]:
     if not result.stdout:
         return {}
     try:
-        return json.loads(result.stdout)
+        data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def parse_pip_audit(data: Dict[str, Any], location: str) -> List[Finding]:

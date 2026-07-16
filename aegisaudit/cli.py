@@ -1,7 +1,7 @@
 import typer
 import asyncio
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 from datetime import datetime
 
 from rich.console import Console
@@ -26,7 +26,7 @@ EXIT_GATE_FAILED = 1
 EXIT_USAGE_ERROR = 2
 
 
-def _resolve_formats(format_values: List[str]) -> set:
+def _resolve_formats(format_values: List[str]) -> Set[str]:
     """Parse --format, converting a bad value into a usage error (exit 2)."""
     try:
         return parse_formats(format_values)
@@ -45,7 +45,7 @@ def _resolve_fail_on(fail_on: Optional[str]) -> Optional[Severity]:
         raise typer.Exit(code=EXIT_USAGE_ERROR) from None
 
 
-def _write_reports(result: ScanResult, out: Path, formats: set) -> None:
+def _write_reports(result: ScanResult, out: Path, formats: Set[str]) -> None:
     """Write every requested report format."""
     out.mkdir(parents=True, exist_ok=True)
 
@@ -76,7 +76,7 @@ def _apply_gate(
 
 
 @app.callback()
-def main():
+def main() -> None:
     """
     AegisAudit security auditor.
     """
@@ -86,7 +86,7 @@ async def run_scan(
     urls: List[str],
     config: AegisConfig,
     output_dir: Path,
-    formats: set,
+    formats: Set[str],
     save_history: bool = True,
     webhook: Optional[str] = None,
 ) -> Optional[ScanResult]:
@@ -174,7 +174,7 @@ def audit(
     fail_under: Optional[float] = typer.Option(
         None, "--fail-under", help="Exit 1 if the overall score is below this value (0-100)."
     ),
-):
+) -> None:
     """
     Run a static analysis (SAST) audit on a local directory.
     Checks for secrets, dependency vulnerabilities, and insecure code patterns.
@@ -247,7 +247,7 @@ def scan(
     fail_under: Optional[float] = typer.Option(
         None, "--fail-under", help="Exit 1 if the overall score is below this value (0-100)."
     ),
-):
+) -> None:
     """
     Run a security posture scan against target URLs.
     """

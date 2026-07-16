@@ -9,7 +9,7 @@ from aegisaudit.scoring import calculate_score
 
 
 class SASTScanner:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     def scan(self, root_path: Path) -> ScanResult:

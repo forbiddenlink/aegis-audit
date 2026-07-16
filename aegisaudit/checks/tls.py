@@ -8,7 +8,7 @@ from aegisaudit.config import AegisConfig
 
 
 def check_tls(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
-    findings = []
+    findings: List[Finding] = []
 
     # Only relevant for HTTPS
     if not artifact.url.startswith("https://"):
@@ -27,9 +27,11 @@ def check_tls(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
 
+                # getpeercert() returns None when the peer presented no
+                # certificate that could be validated; guard before indexing.
                 # Check Expiration
-                not_after_str = cert.get("notAfter")
-                if not_after_str:
+                not_after_str = cert.get("notAfter") if cert else None
+                if isinstance(not_after_str, str):
                     # Format: Sep 18 20:41:51 2024 GMT
                     expires = datetime.strptime(not_after_str, r"%b %d %H:%M:%S %Y %Z")
                     days_left = (expires - datetime.now()).days
