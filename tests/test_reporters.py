@@ -215,6 +215,63 @@ class TestHTMLReport:
         assert "<body" in content.lower()
         assert "</body>" in content.lower()
 
+    def test_html_report_escapes_finding_content(self, tmp_path):
+        """Finding text comes from scanned pages (script srcs, matched
+        strings), so it is attacker-controlled. Rendered without escaping, a
+        crafted page turns the report itself into stored XSS when opened."""
+        result = ScanResult(
+            tool_version="0.1.0",
+            targets=["https://x.test"],
+            findings=[
+                Finding(
+                    id="xss-probe",
+                    severity=Severity.HIGH,
+                    title="<script>alert('title')</script>",
+                    description="<img src=x onerror=alert('desc')>",
+                    url="https://x.test/<script>alert('url')</script>",
+                    evidence="<script>alert('evidence')</script>",
+                )
+            ],
+            summary=ScanSummary(counts_by_severity={"high": 1}, overall_score=0.0),
+        )
+        output_file = tmp_path / "report.html"
+        generate_html_report(result, output_file)
+        content = output_file.read_text()
+        # No live injected tags: the payload's angle brackets must be escaped so
+        # neither a <script> nor an <img onerror> element is created.
+        assert "<script>alert(" not in content
+        assert "<img src=x" not in content
+        # The escaped form is present, proving the content still rendered.
+        assert "&lt;script&gt;alert(" in content
+        assert "&lt;img src=x onerror=alert(" in content
+
+    def test_html_report_styles_and_counts_critical(self, tmp_path):
+        """Critical is the most severe class; it must have a styled badge and be
+        counted in the summary. The per-finding badge must use the severity
+        value ('critical'), not the enum's repr ('Severity.CRITICAL'), or the
+        CSS never matches and the badge renders unstyled."""
+        result = ScanResult(
+            tool_version="0.1.0",
+            targets=["https://x.test"],
+            findings=[
+                Finding(
+                    id="pk",
+                    severity=Severity.CRITICAL,
+                    title="Private key",
+                    description="d",
+                    url="https://x.test",
+                )
+            ],
+            summary=ScanSummary(counts_by_severity={"critical": 1}, overall_score=0.0),
+        )
+        output_file = tmp_path / "report.html"
+        generate_html_report(result, output_file)
+        content = output_file.read_text()
+        assert 'class="severity critical"' in content
+        assert "Severity.CRITICAL" not in content
+        # A CSS rule for the critical badge exists.
+        assert ".critical {" in content or ".critical{" in content
+
 
 class TestReportWithNoFindings:
     """Tests for reports with clean scan results."""
