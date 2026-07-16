@@ -1,7 +1,7 @@
 from importlib.resources import files
 from pathlib import Path
 
-from jinja2 import Template
+from jinja2 import Environment, select_autoescape
 
 from aegisaudit.history import ScanHistory
 from aegisaudit.models import ScanResult
@@ -16,7 +16,11 @@ def generate_html_report(result: ScanResult, output_path: Path) -> None:
     template_source = (
         files("aegisaudit").joinpath("templates", "report.html.j2").read_text(encoding="utf-8")
     )
-    template = Template(template_source)
+    # Finding text (descriptions, URLs, evidence, titles) is scanned page
+    # content and therefore attacker-controlled. Autoescape so a crafted page
+    # cannot turn the report into stored XSS when it is opened.
+    env = Environment(autoescape=select_autoescape(default_for_string=True, default=True))
+    template = env.from_string(template_source)
 
     # Fetch recent history for the chart
     history_db = ScanHistory()

@@ -10,6 +10,7 @@
             --card-bg: #ffffff;
             --text-color: #212529;
             --border-color: #dee2e6;
+            --critical-color: #6f1d1b;
             --high-color: #dc3545;
             --medium-color: #ffc107;
             --low-color: #0d6efd;
@@ -58,6 +59,7 @@
             font-size: 0.8em;
             text-transform: uppercase;
         }
+        .critical { background-color: var(--critical-color); }
         .high { background-color: var(--high-color); }
         .medium { background-color: var(--medium-color); color: black; }
         .low { background-color: var(--low-color); }
@@ -123,6 +125,7 @@
         <section class="score-card">
             <h2>Summary by Severity</h2>
             <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+                <div><span class="severity critical">Critical</span> {{ result.summary.counts_by_severity.critical }}</div>
                 <div><span class="severity high">High</span> {{ result.summary.counts_by_severity.high }}</div>
                 <div><span class="severity medium">Medium</span> {{ result.summary.counts_by_severity.medium }}</div>
                 <div><span class="severity low">Low</span> {{ result.summary.counts_by_severity.low }}</div>
@@ -140,7 +143,7 @@
                 {% for finding in result.findings %}
                 <div class="finding-card">
                     <div>
-                        <span class="severity {{ finding.severity }}">{{ finding.severity }}</span>
+                        <span class="severity {{ finding.severity.value }}">{{ finding.severity.value }}</span>
                         <strong>{{ finding.url }}</strong>
                     </div>
                     <h3>{{ finding.title }}</h3>

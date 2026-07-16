@@ -54,7 +54,7 @@ dev = [
 aegis = "aegisaudit.cli:app"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [tool.ruff]

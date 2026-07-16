@@ -20,8 +20,8 @@ reports.
 
 - **Code Audit (`audit`)** — static analysis of a local directory:
   - **Secrets**: hardcoded AWS keys, Google API keys, Slack tokens, private keys.
-  - **Dependencies**: vulnerable Python packages (via `safety`, if installed)
-    and Node.js packages (via `npm audit`).
+  - **Dependencies**: vulnerable Python packages (via `pip-audit`, bundled) and
+    Node.js packages (via `npm audit`, if installed).
   - **Static analysis**: dangerous Python patterns such as `eval()` / `exec()`.
 
 - **Operational**:

@@ -22,6 +22,11 @@ class Fetcher:
         # Concurrency budget, always at least 1 so the fetcher can never block
         # on an empty semaphore.
         self.semaphore = asyncio.Semaphore(max(1, config.limits.max_concurrency))
+        # Rate-limit spacing is serialized on its own lock so waits happen one
+        # at a time (real spacing between request starts) instead of every
+        # concurrent worker sleeping in parallel while holding a request slot,
+        # which let the rate limit burst up to the concurrency budget.
+        self._rate_lock = asyncio.Lock()
 
     async def close(self) -> None:
         await self.client.aclose()
@@ -37,15 +42,19 @@ class Fetcher:
         results = await asyncio.gather(*(self.fetch(url) for url in urls))
         return [artifact for artifact in results if artifact is not None]
 
+    async def _respect_rate_limit(self) -> None:
+        # Guard against a non-positive rate so a misconfigured value can't
+        # divide by zero or sleep forever. The lock serializes the delay so it
+        # spaces request starts rather than running in parallel across workers.
+        rate = self.config.limits.rate_per_sec
+        if rate > 0:
+            async with self._rate_lock:
+                await asyncio.sleep(1.0 / rate)
+
     async def fetch(self, url: str) -> Optional[ScanArtifact]:
+        await self._respect_rate_limit()
         async with self.semaphore:
             try:
-                # Basic rate-limit delay. Guard against a non-positive rate so a
-                # misconfigured value can't divide by zero or sleep forever.
-                rate = self.config.limits.rate_per_sec
-                if rate > 0:
-                    await asyncio.sleep(1.0 / rate)
-
                 response = await self.client.get(url)
 
                 # Truncate body if needed

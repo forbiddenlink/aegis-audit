@@ -11,8 +11,7 @@ Format follows the .gitleaksignore / .semgrepignore convention:
       subtree
 """
 
-from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List
 
 IGNORE_FILENAME = ".aegisignore"
@@ -66,7 +65,11 @@ class IgnoreRules:
                     return True
                 continue
 
-            if fnmatch(relative_path, pattern):
+            # PurePosixPath.match is pathname-aware: `*` does not cross a path
+            # separator, so `src/*.py` matches src/app.py but not
+            # src/deep/nested.py. fnmatch let `*` span `/` and suppressed nested
+            # files the user never excluded.
+            if PurePosixPath(relative_path).match(pattern):
                 return True
 
             # A bare directory name ("tests") also suppresses its subtree, which
