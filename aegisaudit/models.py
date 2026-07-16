@@ -1,7 +1,21 @@
 from datetime import datetime
 from enum import Enum
+from importlib.metadata import PackageNotFoundError, version
 from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field
+
+
+def _tool_version() -> str:
+    """Read the version from installed package metadata.
+
+    Single source of truth: pyproject.toml. The version used to be hardcoded
+    here and again in fetcher.py's User-Agent, with nothing keeping either in
+    step with the packaged version.
+    """
+    try:
+        return version("aegisaudit")
+    except PackageNotFoundError:  # running from a source tree, not installed
+        return "0.0.0+unknown"
 
 
 class Severity(str, Enum):
@@ -19,6 +33,10 @@ class Finding(BaseModel):
     description: str
     evidence: Optional[str] = None
     url: str
+    # 1-indexed source line, when the finding refers to a location in a file.
+    # SARIF consumers need this as a real region: without it, GitHub anchors the
+    # alert to line 1 of the file rather than the offending line.
+    line: Optional[int] = None
     remediation: Optional[str] = None
     references: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
@@ -50,7 +68,7 @@ class ScanSummary(BaseModel):
 
 class ScanResult(BaseModel):
     tool_name: str = "AegisAudit"
-    tool_version: str = "0.1.0"
+    tool_version: str = Field(default_factory=_tool_version)
     started_at: datetime = Field(default_factory=datetime.now)
     finished_at: Optional[datetime] = None
     targets: List[str]

@@ -1,12 +1,13 @@
 import ast
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from aegisaudit.models import Finding, Severity
 
 
 class SecurityVisitor(ast.NodeVisitor):
-    def __init__(self, file_path: Path):
+    def __init__(self, file_path: Path, display_path: Optional[str] = None):
         self.file_path = file_path
+        self.location = display_path if display_path is not None else str(file_path)
         self.findings = []
 
     def visit_Call(self, node):
@@ -37,19 +38,25 @@ class SecurityVisitor(ast.NodeVisitor):
                 title=title,
                 description="Static analysis detected a potentially dangerous code pattern.",
                 evidence=f"Line {node.lineno}",
-                url=str(self.file_path),
+                url=self.location,
+                line=node.lineno,
                 remediation="Review and refactor dangerous code.",
                 tags=["sast", "python-ast"],
             )
         )
 
 
-def scan_python_ast(path: Path) -> List[Finding]:
+def scan_python_ast(path: Path, display_path: Optional[str] = None) -> List[Finding]:
+    """Scan one Python file for dangerous patterns.
+
+    display_path is the location reported on the finding. It should be relative
+    to the scan root so SARIF consumers can match it against a repo tree.
+    """
     findings = []
     try:
         content = path.read_text(encoding="utf-8")
         tree = ast.parse(content)
-        visitor = SecurityVisitor(path)
+        visitor = SecurityVisitor(path, display_path)
         visitor.visit(tree)
         findings.extend(visitor.findings)
     except Exception:
