@@ -82,3 +82,13 @@ out/
 *.db
 *.sqlite
 *.sqlite3
+.audit-report.md
+
+# Generated scan output
+aegis-report/
+aegis-audit/
+
+# AI planning-tool artifacts (docs/*.resolved, *.metadata.json)
+*.resolved
+*.resolved.[0-9]
+*.metadata.json

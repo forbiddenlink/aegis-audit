@@ -52,6 +52,10 @@ class ScanArtifact(BaseModel):
     status_code: int
     headers: Dict[str, str]
     cookies: Dict[str, str]
+    # Raw Set-Cookie header lines, unfolded. A plain dict loses the per-cookie
+    # attributes (Secure, HttpOnly, SameSite), so the cookie check needs the
+    # raw lines to inspect flags rather than just names/values.
+    set_cookie_headers: List[str] = Field(default_factory=list)
     body_snippet: str  # Truncated body for analysis
     content_type: str
     timestamp: datetime = Field(default_factory=datetime.now)
@@ -74,6 +78,11 @@ class ScanResult(BaseModel):
     started_at: datetime = Field(default_factory=datetime.now)
     finished_at: Optional[datetime] = None
     targets: List[str]
+    # Targets that could not be fetched at all (DNS failure, timeout, blocked by
+    # the SSRF guard). Recorded so an incomplete scan is never mistaken for a
+    # clean one: a report that silently drops a failed target looks identical to
+    # a report of a healthy site.
+    failed_targets: List[str] = Field(default_factory=list)
     findings: List[Finding] = Field(default_factory=list)
     summary: ScanSummary = Field(default_factory=ScanSummary)
     config_snapshot: Optional[Dict[str, Any]] = None

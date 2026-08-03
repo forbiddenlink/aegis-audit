@@ -143,7 +143,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Documentation
 
 - [Vision](docs/00-vision.md)
+- [Releasing](docs/RELEASING.md)
 
-> Note: `docs/05-cli-spec.md` and `docs/07-check-catalog.md` are pre-implementation
-> design documents. They describe flags and checks that were never built and do
-> not reflect the shipped CLI — read `--help` and this README instead.
+> Note: `docs/05-cli-spec.md` and `docs/07-check-catalog.md` are
+> pre-implementation design documents. They describe some flags (`--sitemap`,
+> baseline diffing) and checks that are not yet built, and their scope does not
+> match the shipped CLI one-to-one. Treat `--help` and this README as
+> authoritative; use those docs for intent only.

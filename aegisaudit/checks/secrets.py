@@ -31,8 +31,16 @@ def check_secrets(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
             "tags": ["secrets", "google"],
         },
         "Email Address": {
-            # Simple regex to avoid false positives in complex JS
-            "regex": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+            # Domain part is written as labels joined by dots, with no overlap
+            # between the label class and the dot separator. The previous
+            # `[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` let the `.` belong to either side,
+            # so a crafted `a@` + long run of dots backtracked quadratically
+            # (ReDoS) over the 200 KB body of a hostile scanned page.
+            # Every quantifier is bounded (RFC local part <=64, DNS label <=63).
+            # An unbounded `+` on the local class -- which includes '.' -- made
+            # finditer O(n^2) over a body of dots (a@....): each start position
+            # re-consumed the whole run. Bounded repetition keeps it linear.
+            "regex": r"[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9-]{1,63}(?:\.[a-zA-Z0-9-]{1,63})+",
             "severity": Severity.INFO,
             "description": "Email address exposed in source code. Can lead to scraping/spam.",
             "tags": ["pii", "email"],

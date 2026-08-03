@@ -13,4 +13,5 @@ Success looks like:
 
 - I can run `aegis scan` against my staging/prod and get a clear report in < 60 seconds for a small site.
 - Reports help me fix real issues (headers, cookies, CSP quality, HTTPS enforcement).
-- Optional CI mode prevents regressions (baseline comparisons).
+- Optional CI mode prevents regressions via score/severity gating (`--fail-on`,
+  `--fail-under`). (Baseline/diff comparisons are aspirational, not yet built.)

@@ -10,27 +10,38 @@ def check_javascript(artifact: ScanArtifact, config: AegisConfig) -> List[Findin
     if "text/html" not in artifact.content_type:
         return findings
 
-    # Passive regex signatures for common libraries
+    # Passive regex signatures for common libraries.
     # NOTE: This is "best effort" passive detection. Active scanning would try to Execute() JS.
+    # `min_safe` is the first release with the relevant XSS/prototype-pollution
+    # advisories fixed; a detected version below it is flagged. This replaces a
+    # blanket "any 1.x/2.x" heuristic that both over-reported patched old
+    # releases and missed later vulnerable majors (e.g. jQuery 3.x < 3.5.0).
     signatures: Dict[str, Dict[str, Any]] = {
         "jQuery": {
             "pattern": r"jquery[.-](\d+\.\d+\.\d+)",
-            "vulnerable": lambda v: v.startswith("1.") or v.startswith("2."),  # Broad brush for MVP
+            "min_safe": (3, 5, 0),  # CVE-2020-11022/11023 XSS fixed in 3.5.0
         },
         "Bootstrap": {
             "pattern": r"bootstrap[.-](\d+\.\d+\.\d+)",
-            "vulnerable": lambda v: v.startswith("3.") or v.startswith("4.0"),
+            "min_safe": (4, 3, 1),  # XSS advisories fixed in 4.3.1
         },
         "AngularJS": {
             "pattern": r"angular[.-](\d+\.\d+\.\d+)",
-            "vulnerable": lambda v: v.startswith("1."),
+            "min_safe": (99, 0, 0),  # AngularJS 1.x is entirely end-of-life
         },
     }
+
+    def _below(version: str, floor: tuple[int, ...]) -> bool:
+        try:
+            parsed = tuple(int(p) for p in version.split("."))
+        except ValueError:
+            return False
+        return parsed < floor
 
     for lib, rule in signatures.items():
         matches = re.findall(rule["pattern"], artifact.body_snippet, re.IGNORECASE)
         for version in matches:
-            if rule["vulnerable"](version):
+            if _below(version, rule["min_safe"]):
                 findings.append(
                     Finding(
                         id=f"vuln-js-{lib.lower()}",

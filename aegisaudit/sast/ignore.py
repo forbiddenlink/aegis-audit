@@ -43,7 +43,21 @@ class IgnoreRules:
         ignore_file = root / IGNORE_FILENAME
         if not ignore_file.is_file():
             return cls([])
-        return cls(cls._parse(ignore_file.read_text(encoding="utf-8")))
+        # A malformed (non-UTF-8) ignore file must not crash the whole scan: an
+        # uncaught exception here exits 1, colliding with the "gate tripped"
+        # exit code the CLI treats as a real finding. Degrade to no rules.
+        try:
+            text = ignore_file.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            import sys
+
+            print(
+                f"Warning: could not read {IGNORE_FILENAME} (not UTF-8?); "
+                "proceeding with no ignore rules.",
+                file=sys.stderr,
+            )
+            return cls([])
+        return cls(cls._parse(text))
 
     @staticmethod
     def _parse(text: str) -> List[str]:
