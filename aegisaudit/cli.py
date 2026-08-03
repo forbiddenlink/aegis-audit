@@ -1,12 +1,16 @@
 import typer
 import asyncio
+import logging
+import sys
+from functools import wraps
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Callable, List, Optional, Set, TypeVar, cast
 from datetime import datetime
 
 from rich.console import Console
 from rich.table import Table
 
+from aegisaudit.models import _tool_version
 from aegisaudit.config import load_config, AegisConfig
 from aegisaudit.fetcher import Fetcher
 from aegisaudit.gating import gate_failure_reason, parse_formats, parse_severity
@@ -14,7 +18,8 @@ from aegisaudit.models import ScanResult, Severity
 from aegisaudit.runner import Runner
 from aegisaudit.reporters import generate_json_report, generate_sarif_report, generate_html_report
 from aegisaudit.history import ScanHistory
-from aegisaudit.notifications import send_webhook
+from aegisaudit.notifications import send_webhook, send_telegram
+from aegisaudit.integrations.notion import push_to_notion
 from aegisaudit.sast.scanner import SASTScanner
 
 app = typer.Typer(help="AegisAudit - Security posture reports for modern web apps.")
@@ -24,6 +29,38 @@ console = Console()
 EXIT_OK = 0
 EXIT_GATE_FAILED = 1
 EXIT_USAGE_ERROR = 2
+EXIT_TOOL_ERROR = 2  # an unhandled crash; distinct from a tripped gate (1)
+
+F = TypeVar("F", bound=Callable[..., None])
+
+
+def _guarded(fn: F) -> F:
+    """Map any unhandled exception in a command to exit code >=2.
+
+    Without this, a crash anywhere in the pipeline (a malformed input file, a
+    report-writer error) falls through to the framework default of exit 1 --
+    indistinguishable from "--fail-on tripped". gating.py sells that
+    distinction as the tool's edge over gitleaks; this backstop preserves it.
+    typer.Exit (deliberate 0/1/2) is re-raised untouched.
+    """
+
+    @wraps(fn)
+    def wrapper(*args: object, **kwargs: object) -> None:
+        try:
+            fn(*args, **kwargs)
+        except typer.Exit:
+            raise
+        except Exception as exc:  # noqa: BLE001 - deliberate top-level backstop
+            console.print(f"[bold red]Tool error:[/bold red] {exc}")
+            raise typer.Exit(code=EXIT_TOOL_ERROR) from exc
+
+    return cast(F, wrapper)
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"AegisAudit {_tool_version()}")
+        raise typer.Exit(code=EXIT_OK)
 
 
 def _resolve_formats(format_values: List[str]) -> Set[str]:
@@ -76,10 +113,28 @@ def _apply_gate(
 
 
 @app.callback()
-def main() -> None:
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the AegisAudit version and exit.",
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Emit diagnostic logs (to stderr)."
+    ),
+) -> None:
     """
     AegisAudit security auditor.
     """
+    # Diagnostics go through logging to stderr so stdout stays clean for piping;
+    # -v raises the level from WARNING to DEBUG.
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.DEBUG if verbose else logging.WARNING,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
 
 
 async def run_scan(
@@ -100,14 +155,20 @@ async def run_scan(
 
     for artifact in artifacts:
         console.print(f"  [green]✓[/green] {artifact.status_code} {artifact.final_url}")
-    failed = len(urls) - len(artifacts)
-    if failed:
-        console.print(f"  [red]✗[/red] {failed} of {len(urls)} target(s) failed to fetch")
+    fetched_urls = {a.url for a in artifacts}
+    failed_targets = [u for u in urls if u not in fetched_urls]
+    if failed_targets:
+        console.print(
+            f"  [red]✗[/red] {len(failed_targets)} of {len(urls)} target(s) failed to fetch"
+        )
 
     if artifacts:
         console.print(f"\n[bold]Running checks on {len(artifacts)} artifacts...[/bold]")
         runner = Runner(config)
         result = runner.run_checks(artifacts)
+        # Record what never got assessed so an incomplete scan can't read as a
+        # clean one in the report or the gate.
+        result.failed_targets = failed_targets
         result.finished_at = datetime.now()
 
         # Display Summary
@@ -158,9 +219,15 @@ async def run_scan(
 
 
 @app.command()
+@_guarded
 def audit(
     directory: Path = typer.Argument(
-        ..., help="Directory to audit", exists=True, file_okay=False, dir_okay=True
+        ...,
+        metavar="DIRECTORY",
+        help="Directory to audit",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
     ),
     out: Path = typer.Option(Path("./aegis-audit"), "--out", help="Output directory"),
     format: List[str] = typer.Option(
@@ -173,6 +240,18 @@ def audit(
     ),
     fail_under: Optional[float] = typer.Option(
         None, "--fail-under", help="Exit 1 if the overall score is below this value (0-100)."
+    ),
+    telegram_token: Optional[str] = typer.Option(
+        None, "--telegram-token", envvar="AEGIS_TELEGRAM_TOKEN", help="Telegram bot token"
+    ),
+    telegram_chat_id: Optional[str] = typer.Option(
+        None, "--telegram-chat-id", envvar="AEGIS_TELEGRAM_CHAT_ID", help="Telegram chat ID"
+    ),
+    notion_db: Optional[str] = typer.Option(
+        None, "--notion-db", envvar="AEGIS_NOTION_DB_ID", help="Notion database ID"
+    ),
+    notion_token: Optional[str] = typer.Option(
+        None, "--notion-token", envvar="NOTION_TOKEN", help="Notion integration token"
     ),
 ) -> None:
     """
@@ -217,10 +296,17 @@ def audit(
         console.print("[green]No issues found![/green]")
 
     _write_reports(result, out, formats)
+
+    if telegram_token and telegram_chat_id:
+        send_telegram(telegram_token, telegram_chat_id, result)
+    if notion_db and notion_token:
+        push_to_notion(result, notion_db, notion_token)
+
     _apply_gate(result, fail_on_severity, fail_under)
 
 
 @app.command()
+@_guarded
 def scan(
     urls: Optional[List[str]] = typer.Option(
         None, "--url", help="Single URL to scan (can be repeated)"
@@ -247,6 +333,18 @@ def scan(
     fail_under: Optional[float] = typer.Option(
         None, "--fail-under", help="Exit 1 if the overall score is below this value (0-100)."
     ),
+    telegram_token: Optional[str] = typer.Option(
+        None, "--telegram-token", envvar="AEGIS_TELEGRAM_TOKEN", help="Telegram bot token"
+    ),
+    telegram_chat_id: Optional[str] = typer.Option(
+        None, "--telegram-chat-id", envvar="AEGIS_TELEGRAM_CHAT_ID", help="Telegram chat ID"
+    ),
+    notion_db: Optional[str] = typer.Option(
+        None, "--notion-db", envvar="AEGIS_NOTION_DB_ID", help="Notion database ID"
+    ),
+    notion_token: Optional[str] = typer.Option(
+        None, "--notion-token", envvar="NOTION_TOKEN", help="Notion integration token"
+    ),
 ) -> None:
     """
     Run a security posture scan against target URLs.
@@ -260,7 +358,12 @@ def scan(
     if urls:
         target_urls.extend(urls)
 
-    if file and file.exists():
+    if file is not None:
+        # An explicit --file that doesn't exist is a mistake worth naming, not a
+        # silent no-op that later surfaces as the generic "no targets" message.
+        if not file.exists():
+            console.print(f"[red]File not found:[/red] {file}")
+            raise typer.Exit(code=EXIT_USAGE_ERROR)
         with open(file, "r") as f:
             lines = [line.strip() for line in f if line.strip()]
             target_urls.extend(lines)
@@ -278,6 +381,10 @@ def scan(
             base = url.rstrip("/")
             expanded_urls.append(f"{base}/.env")
             expanded_urls.append(f"{base}/.git/HEAD")
+            # Fetch the RFC 9116 disclosure file so check_security_txt can
+            # actually validate it -- without this it only fires when the user
+            # names a security.txt URL by hand.
+            expanded_urls.append(f"{base}/.well-known/security.txt")
             # We could add more here (wp-config, etc.)
         target_urls = expanded_urls
         console.print(
@@ -301,6 +408,11 @@ def scan(
         # "no issues found".
         console.print("[red]No targets could be fetched.[/red]")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
+
+    if telegram_token and telegram_chat_id:
+        send_telegram(telegram_token, telegram_chat_id, result)
+    if notion_db and notion_token:
+        push_to_notion(result, notion_db, notion_token)
 
     _apply_gate(result, fail_on_severity, fail_under)
 

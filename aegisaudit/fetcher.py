@@ -1,8 +1,14 @@
-import httpx
 import asyncio
+import logging
 from typing import Optional
-from aegisaudit.models import ScanArtifact, _tool_version
+
+import httpx
+
 from aegisaudit.config import AegisConfig
+from aegisaudit.models import ScanArtifact, _tool_version
+from aegisaudit.ssrf import SSRFError, validate_url
+
+logger = logging.getLogger(__name__)
 
 # Identify the scanner honestly, and point operators at the project so they can
 # tell an audit apart from an attack in their logs.
@@ -12,9 +18,13 @@ DEFAULT_USER_AGENT = f"AegisAudit/{_tool_version()} (+https://github.com/forbidd
 class Fetcher:
     def __init__(self, config: AegisConfig):
         self.config = config
+        # follow_redirects is OFF: redirects are followed manually in fetch() so
+        # every hop can be re-validated by the SSRF guard. Letting httpx follow
+        # them automatically would jump to an internal/metadata host with no
+        # check. verify defaults on (see LimitsConfig.insecure).
         self.client = httpx.AsyncClient(
-            verify=False,  # We want to inspect certs, not block on them (passive mode)
-            follow_redirects=True,
+            verify=not config.limits.insecure,
+            follow_redirects=False,
             timeout=config.limits.timeout_sec,
             headers={"User-Agent": DEFAULT_USER_AGENT},
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=10),
@@ -51,11 +61,34 @@ class Fetcher:
             async with self._rate_lock:
                 await asyncio.sleep(1.0 / rate)
 
+    def _validate(self, url: str) -> None:
+        """SSRF-gate a destination, honouring the configured scope."""
+        validate_url(
+            url,
+            allow=self.config.scope.allow,
+            allow_private=self.config.scope.allow_private,
+        )
+
     async def fetch(self, url: str) -> Optional[ScanArtifact]:
         await self._respect_rate_limit()
         async with self.semaphore:
             try:
-                response = await self.client.get(url)
+                # Validate the initial destination, then follow redirects
+                # manually so each hop is re-validated. An attacker's target can
+                # 3xx to an internal/metadata host; auto-following would leak its
+                # body into reports and outbound webhooks.
+                self._validate(url)
+                current = url
+                response = await self.client.get(current)
+                hops = 0
+                while response.is_redirect:
+                    if hops >= self.config.limits.max_redirects:
+                        raise SSRFError(f"too many redirects (>{self.config.limits.max_redirects})")
+                    location = response.headers.get("location", "")
+                    current = str(response.url.join(location))
+                    self._validate(current)
+                    hops += 1
+                    response = await self.client.get(current)
 
                 # Truncate body if needed
                 body_content = response.text
@@ -68,10 +101,15 @@ class Fetcher:
                     status_code=response.status_code,
                     headers=dict(response.headers),
                     cookies=dict(response.cookies),
+                    set_cookie_headers=response.headers.get_list("set-cookie"),
                     content_type=response.headers.get("content-type", ""),
                     body_snippet=body_content,
                 )
+            except SSRFError as e:
+                # A blocked destination is a security event, not a transient
+                # error -- surface it at warning level even without -v.
+                logger.warning("Blocked (SSRF guard) %s: %s", url, e)
+                return None
             except Exception as e:
-                # In a real tool, log this failure prominently
-                print(f"Error fetching {url}: {e}")
+                logger.warning("Error fetching %s: %s", url, e)
                 return None

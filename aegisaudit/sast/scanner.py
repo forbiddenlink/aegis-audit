@@ -7,6 +7,11 @@ from aegisaudit.sast.static import scan_python_ast
 from aegisaudit.sast.dependencies import check_python_dependencies, check_node_dependencies
 from aegisaudit.scoring import calculate_score
 
+# Files larger than this are skipped: the secret/AST scan reads the whole file
+# into memory, so a committed multi-GB binary or dataset would spike memory and
+# wall-clock with no security signal to gain.
+MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
+
 
 class SASTScanner:
     def __init__(self) -> None:
@@ -43,6 +48,13 @@ class SASTScanner:
                 if ignore_rules.matches(display_path):
                     continue
 
+                # Skip files too large to scan economically (see MAX_FILE_BYTES).
+                try:
+                    if file_path.stat().st_size > MAX_FILE_BYTES:
+                        continue
+                except OSError:
+                    continue  # broken symlink, race, permissions
+
                 # Secrets Scan (All text files)
                 all_findings.extend(scan_file_for_secrets(file_path, display_path))
 
@@ -50,10 +62,13 @@ class SASTScanner:
                 if file_path.suffix == ".py":
                     all_findings.extend(scan_python_ast(file_path, display_path))
 
-        # Post-process findings to filter duplicates
+        # Post-process findings to filter duplicates. The line is part of the
+        # key: two eval() calls on different lines of the same file are two real
+        # findings, and keying on (id, url) alone silently dropped the second,
+        # undercounting issues and inflating the score.
         unique = {}
         for f in all_findings:
-            key = (f.id, f.url)
+            key = (f.id, f.url, f.line)
             if key not in unique:
                 unique[key] = f
 

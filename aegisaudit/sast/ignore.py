@@ -11,8 +11,11 @@ Format follows the .gitleaksignore / .semgrepignore convention:
       subtree
 """
 
+import logging
 from pathlib import Path, PurePosixPath
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 IGNORE_FILENAME = ".aegisignore"
 
@@ -43,7 +46,18 @@ class IgnoreRules:
         ignore_file = root / IGNORE_FILENAME
         if not ignore_file.is_file():
             return cls([])
-        return cls(cls._parse(ignore_file.read_text(encoding="utf-8")))
+        # A malformed (non-UTF-8) ignore file must not crash the whole scan: an
+        # uncaught exception here exits 1, colliding with the "gate tripped"
+        # exit code the CLI treats as a real finding. Degrade to no rules.
+        try:
+            text = ignore_file.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            logger.warning(
+                "Could not read %s (not UTF-8?); proceeding with no ignore rules.",
+                IGNORE_FILENAME,
+            )
+            return cls([])
+        return cls(cls._parse(text))
 
     @staticmethod
     def _parse(text: str) -> List[str]:

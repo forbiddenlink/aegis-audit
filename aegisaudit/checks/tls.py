@@ -1,10 +1,13 @@
 from typing import List
+import logging
 import ssl
 import socket
 from datetime import datetime
 from urllib.parse import urlparse
 from aegisaudit.models import ScanArtifact, Finding, Severity
 from aegisaudit.config import AegisConfig
+
+logger = logging.getLogger(__name__)
 
 
 def classify_cert_error(message: str) -> Finding:
@@ -128,9 +131,11 @@ def check_tls(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
         finding = classify_cert_error(exc.verify_message or str(exc))
         finding.url = artifact.url
         findings.append(finding)
-    except Exception:
+    except Exception as exc:
         # Genuine connection problems (timeout, refused, DNS) are not a
-        # certificate verdict; don't manufacture a finding from them.
-        pass
+        # certificate verdict; don't manufacture a finding from them. But leave
+        # a diagnostic trail on stderr so a healthy host and an unreachable one
+        # aren't silently identical in the report.
+        logger.info("TLS check could not connect to %s: %s", artifact.url, exc)
 
     return findings

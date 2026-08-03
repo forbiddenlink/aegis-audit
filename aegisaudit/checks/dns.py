@@ -1,8 +1,11 @@
+import logging
 from typing import List
 import dns.resolver
 from urllib.parse import urlparse
 from aegisaudit.models import ScanArtifact, Finding, Severity
 from aegisaudit.config import AegisConfig
+
+logger = logging.getLogger(__name__)
 
 
 def check_dns(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
@@ -92,6 +95,6 @@ def check_dns(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
 
     except Exception as e:
         # DNS failures shouldn't crash the scanner
-        print(f"DNS Check failed: {e}")
+        logger.warning("DNS check failed: %s", e)
 
     return findings

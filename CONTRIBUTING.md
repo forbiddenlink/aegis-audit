@@ -124,7 +124,8 @@ def check_example(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
    ```
 3. Register the check in `aegisaudit/runner.py` by adding it to `CHECK_MODULES`
 4. Add tests in `tests/test_checks_my_check.py`
-5. Update `docs/07-check-catalog.md` with documentation
+5. Document the new check in `README.md` (the check catalog under `docs/` is a
+   stale design doc, not the source of truth — see the README note)
 
 ### SAST Checks
 

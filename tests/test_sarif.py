@@ -100,11 +100,91 @@ class TestLocations:
         assert not uri.startswith("/")
 
 
+# A self-contained JSON Schema for the SARIF 2.1.0 subset AegisAudit emits.
+# Validating against an inline schema (rather than a cached copy of the full
+# official schema that has to exist on disk) means this test actually runs in
+# every environment instead of silently skipping.
+SARIF_SUBSET_SCHEMA = {
+    "type": "object",
+    "required": ["version", "runs"],
+    "properties": {
+        "version": {"const": "2.1.0"},
+        "$schema": {"type": "string"},
+        "runs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": ["tool", "results"],
+                "properties": {
+                    "tool": {
+                        "type": "object",
+                        "required": ["driver"],
+                        "properties": {
+                            "driver": {
+                                "type": "object",
+                                "required": ["name", "rules"],
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "rules": {"type": "array"},
+                                },
+                            }
+                        },
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["ruleId", "level", "message", "locations"],
+                            "properties": {
+                                "ruleId": {"type": "string"},
+                                "level": {"enum": ["none", "note", "warning", "error"]},
+                                "message": {
+                                    "type": "object",
+                                    "required": ["text"],
+                                    "properties": {"text": {"type": "string"}},
+                                },
+                                "locations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": ["physicalLocation"],
+                                        "properties": {
+                                            "physicalLocation": {
+                                                "type": "object",
+                                                "required": ["artifactLocation"],
+                                                "properties": {
+                                                    "region": {
+                                                        "type": "object",
+                                                        "required": ["startLine"],
+                                                        "properties": {
+                                                            "startLine": {
+                                                                "type": "integer",
+                                                                "minimum": 1,
+                                                            }
+                                                        },
+                                                    }
+                                                },
+                                            }
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
+
 class TestSchemaConformance:
-    def test_sarif_validates_against_the_official_2_1_0_schema(self, tmp_path):
+    def test_sarif_validates_against_the_2_1_0_subset_schema(self, tmp_path):
         jsonschema = pytest.importorskip("jsonschema")
-        schema_file = tmp_path.parent / "sarif-schema-2.1.0.json"
-        if not schema_file.exists():
-            pytest.skip("SARIF schema not cached locally")
-        sarif = write_sarif(tmp_path, [finding(Severity.CRITICAL, line=3)])
-        jsonschema.validate(sarif, json.loads(schema_file.read_text()))
+        sarif = write_sarif(
+            tmp_path,
+            [finding(Severity.CRITICAL, line=3), finding(Severity.HIGH, id="f2")],
+        )
+        # Raises jsonschema.ValidationError on any structural violation.
+        jsonschema.validate(sarif, SARIF_SUBSET_SCHEMA)

@@ -6,7 +6,15 @@ from aegisaudit.policy import DEFAULT_POLICY
 
 
 class ScopeConfig(BaseModel):
+    # Hostname allowlist. When non-empty, only these hosts (and their
+    # subdomains) may be fetched -- enforced in the SSRF guard, not just
+    # advisory. Empty means "any public host".
     allow: List[str] = Field(default_factory=list)
+    # Permit fetching private / loopback / link-local / metadata addresses.
+    # Off by default: a scanner that follows a target's redirect into cloud
+    # metadata is an SSRF credential-theft primitive. Turn on only for scanning
+    # an intentionally-internal target from inside its own network.
+    allow_private: bool = False
 
 
 class TargetsConfig(BaseModel):
@@ -24,6 +32,15 @@ class LimitsConfig(BaseModel):
     # conflated into one Semaphore(int(rate_per_sec)), which became Semaphore(0)
     # and hung whenever the rate dropped below 1.
     max_concurrency: int = 10
+    # Verify TLS certificates on the content fetch. On by default so an on-path
+    # attacker cannot feed forged content into the report/regex/webhook
+    # pipeline. Certificate *inspection* (expiry, weak protocol) is a separate
+    # validating connection in checks/tls.py, so disabling verification here
+    # bought nothing but MITM exposure. Set insecure=True (or --insecure) to
+    # scan a target whose cert is intentionally broken.
+    insecure: bool = False
+    # Max redirect hops to follow. Each hop is re-validated by the SSRF guard.
+    max_redirects: int = 5
 
 
 class AegisConfig(BaseModel):

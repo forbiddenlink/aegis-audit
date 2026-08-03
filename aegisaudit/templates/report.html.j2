@@ -97,14 +97,21 @@
             <h3>Security Score Trend</h3>
             <canvas id="historyChart" width="800" height="200"></canvas>
         </div>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+                integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+                crossorigin="anonymous"></script>
         <script>
             const ctx = document.getElementById('historyChart').getContext('2d');
+            // Emit chart values as JSON, not interpolated into the script body.
+            // Jinja's HTML autoescape does NOT neutralize injection inside a
+            // <script> block, so string-concatenating scan-derived values here
+            // would be a latent XSS sink; |tojson encodes them safely.
+            const rawLabels = {{ history | map(attribute='timestamp') | list | tojson }};
             const data = {
-                labels: [{% for row in history %}"{{ row.timestamp[:10] }}",{% endfor %}],
+                labels: rawLabels.map(t => String(t).slice(0, 10)),
                 datasets: [{
                     label: 'Security Score',
-                    data: [{% for row in history %}{{ row.score }},{% endfor %}],
+                    data: {{ history | map(attribute='score') | list | tojson }},
                     borderColor: '#007bff',
                     tension: 0.1,
                     fill: false

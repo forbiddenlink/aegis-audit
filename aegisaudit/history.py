@@ -4,12 +4,16 @@ from datetime import datetime
 from typing import List, Dict, Any
 from aegisaudit.models import ScanResult
 
-DB_PATH = Path("scan_history.db")
+# Default to a stable per-user location, not the current working directory.
+# A relative default silently forked trend history per directory (and never
+# persisted in CI, which starts clean each run).
+DB_PATH = Path.home() / ".aegisaudit" / "scan_history.db"
 
 
 class ScanHistory:
     def __init__(self, db_path: Path = DB_PATH) -> None:
         self.db_path = db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _init_db(self) -> None:
