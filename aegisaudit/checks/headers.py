@@ -45,9 +45,7 @@ def check_headers(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
                     id="weak-hsts-max-age",
                     severity=Severity.MEDIUM,
                     title="HSTS max-age Too Short",
-                    description=(
-                        f"HSTS max-age is {max_age}s, below the required {min_max_age}s."
-                    ),
+                    description=(f"HSTS max-age is {max_age}s, below the required {min_max_age}s."),
                     evidence=headers["strict-transport-security"],
                     url=artifact.url,
                     remediation=f"Set max-age to at least {min_max_age} (180 days).",
