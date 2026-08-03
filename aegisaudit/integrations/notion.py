@@ -1,8 +1,11 @@
+import logging
 from typing import Any, Dict
 
 import httpx
 
 from aegisaudit.models import ScanResult, Severity
+
+logger = logging.getLogger(__name__)
 
 _NOTION_API = "https://api.notion.com/v1"
 _NOTION_VERSION = "2022-06-28"
@@ -50,4 +53,4 @@ def push_to_notion(result: ScanResult, db_id: str, token: str) -> None:
             timeout=10.0,
         )
     except Exception as e:
-        print(f"Failed to push to Notion: {e}")
+        logger.error("Failed to push to Notion: %s", e)

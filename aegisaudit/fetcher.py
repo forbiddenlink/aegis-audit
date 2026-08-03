@@ -1,5 +1,5 @@
 import asyncio
-import sys
+import logging
 from typing import Optional
 
 import httpx
@@ -7,6 +7,8 @@ import httpx
 from aegisaudit.config import AegisConfig
 from aegisaudit.models import ScanArtifact, _tool_version
 from aegisaudit.ssrf import SSRFError, validate_url
+
+logger = logging.getLogger(__name__)
 
 # Identify the scanner honestly, and point operators at the project so they can
 # tell an audit apart from an attack in their logs.
@@ -105,9 +107,9 @@ class Fetcher:
                 )
             except SSRFError as e:
                 # A blocked destination is a security event, not a transient
-                # error -- surface it distinctly on stderr.
-                print(f"Blocked (SSRF guard) {url}: {e}", file=sys.stderr)
+                # error -- surface it at warning level even without -v.
+                logger.warning("Blocked (SSRF guard) %s: %s", url, e)
                 return None
             except Exception as e:
-                print(f"Error fetching {url}: {e}", file=sys.stderr)
+                logger.warning("Error fetching %s: %s", url, e)
                 return None

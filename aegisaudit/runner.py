@@ -1,6 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Callable, Tuple, Set
 from urllib.parse import urlparse
-from aegisaudit.models import ScanArtifact, Finding, ScanResult
+from aegisaudit.models import ScanArtifact, Finding, ScanResult, Severity
 from aegisaudit.config import AegisConfig
 from aegisaudit.scoring import calculate_score
 
@@ -28,6 +29,19 @@ CHECK_MODULES: List[Callable[[ScanArtifact, AegisConfig], List[Finding]]] = [
     check_secrets,
     check_exposure,
 ]
+
+# Deterministic ordering for findings collected out of order by the thread pool.
+_SEVERITY_RANK = {
+    Severity.CRITICAL: 0,
+    Severity.HIGH: 1,
+    Severity.MEDIUM: 2,
+    Severity.LOW: 3,
+    Severity.INFO: 4,
+}
+
+
+def _sort_key(f: Finding) -> Tuple[str, int, str, int]:
+    return (f.url, _SEVERITY_RANK.get(f.severity, 9), f.id, f.line or 0)
 
 
 def dedupe_findings(findings: List[Finding]) -> List[Finding]:
@@ -59,15 +73,30 @@ class Runner:
     def __init__(self, config: AegisConfig):
         self.config = config
 
-    def run_checks(self, artifacts: List[ScanArtifact]) -> ScanResult:
-        all_findings = []
+    def _check_artifact(self, artifact: ScanArtifact) -> List[Finding]:
+        findings: List[Finding] = []
+        for check_func in CHECK_MODULES:
+            findings.extend(check_func(artifact, self.config))
+        return findings
 
-        for artifact in artifacts:
-            for check_func in CHECK_MODULES:
-                findings = check_func(artifact, self.config)
-                all_findings.extend(findings)
+    def run_checks(self, artifacts: List[ScanArtifact]) -> ScanResult:
+        all_findings: List[Finding] = []
+
+        # Each artifact's checks are independent, and the network-bound ones
+        # (DNS resolution, TLS handshake) dominate wall-clock. Running one
+        # artifact per worker overlaps that I/O instead of scanning targets one
+        # at a time. Findings come back out of order, so sort for determinism.
+        if len(artifacts) > 1:
+            workers = min(max(1, self.config.limits.max_concurrency), len(artifacts))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for result in pool.map(self._check_artifact, artifacts):
+                    all_findings.extend(result)
+        else:
+            for artifact in artifacts:
+                all_findings.extend(self._check_artifact(artifact))
 
         all_findings = dedupe_findings(all_findings)
+        all_findings.sort(key=_sort_key)
 
         # Calculate Summary using Scoring Engine
         summary = calculate_score(all_findings)

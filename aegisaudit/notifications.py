@@ -1,9 +1,12 @@
 import html
+import logging
 from typing import Any, Dict
 from urllib.parse import urlsplit
 
 import httpx
 from aegisaudit.models import ScanResult, Severity
+
+logger = logging.getLogger(__name__)
 
 # Outbound alert destinations must be https and one of the known chat providers.
 # The webhook URL can come from CI config an attacker may influence; posting
@@ -34,7 +37,7 @@ def send_webhook(url: str, result: ScanResult) -> None:
         return
 
     if not _webhook_allowed(url):
-        print(f"Refusing to send webhook to non-allowlisted destination: {url}")
+        logger.warning("Refusing to send webhook to non-allowlisted destination: %s", url)
         return
 
     score = result.summary.overall_score
@@ -80,7 +83,7 @@ def send_webhook(url: str, result: ScanResult) -> None:
         # Fire and forget
         httpx.post(url, json=payload, timeout=5.0)
     except Exception as e:
-        print(f"Failed to send webhook: {e}")
+        logger.error("Failed to send webhook: %s", e)
 
 
 def send_telegram(token: str, chat_id: str, result: ScanResult) -> None:
@@ -115,4 +118,4 @@ def send_telegram(token: str, chat_id: str, result: ScanResult) -> None:
             timeout=5.0,
         )
     except Exception as e:
-        print(f"Failed to send Telegram alert: {e}")
+        logger.error("Failed to send Telegram alert: %s", e)

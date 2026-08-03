@@ -1,5 +1,7 @@
 import typer
 import asyncio
+import logging
+import sys
 from functools import wraps
 from pathlib import Path
 from typing import Callable, List, Optional, Set, TypeVar, cast
@@ -119,10 +121,20 @@ def main(
         is_eager=True,
         help="Show the AegisAudit version and exit.",
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Emit diagnostic logs (to stderr)."
+    ),
 ) -> None:
     """
     AegisAudit security auditor.
     """
+    # Diagnostics go through logging to stderr so stdout stays clean for piping;
+    # -v raises the level from WARNING to DEBUG.
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.DEBUG if verbose else logging.WARNING,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
 
 
 async def run_scan(

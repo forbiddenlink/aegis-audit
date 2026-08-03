@@ -14,6 +14,19 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Integrity gate: block auto-merge if the update pulls in a dependency with
+      # a known high/critical advisory or a denied license. Runs before the merge
+      # step, so a failure here stops the auto-merge. Uses the GitHub dependency
+      # graph diff (no PR code is executed), safe under pull_request_target.
+      - name: Checkout (base)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Dependency review
+        uses: actions/dependency-review-action@da24556b548a50705dd671f47852072ea4c105d9 # v4.7.1
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
       - name: Enable auto-merge (patch + minor only)
         if: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
         run: gh pr merge --auto --squash "$PR_URL"

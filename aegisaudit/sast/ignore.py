@@ -11,8 +11,11 @@ Format follows the .gitleaksignore / .semgrepignore convention:
       subtree
 """
 
+import logging
 from pathlib import Path, PurePosixPath
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 IGNORE_FILENAME = ".aegisignore"
 
@@ -49,12 +52,9 @@ class IgnoreRules:
         try:
             text = ignore_file.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
-            import sys
-
-            print(
-                f"Warning: could not read {IGNORE_FILENAME} (not UTF-8?); "
-                "proceeding with no ignore rules.",
-                file=sys.stderr,
+            logger.warning(
+                "Could not read %s (not UTF-8?); proceeding with no ignore rules.",
+                IGNORE_FILENAME,
             )
             return cls([])
         return cls(cls._parse(text))
