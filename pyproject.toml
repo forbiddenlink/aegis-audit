@@ -50,7 +50,7 @@ dev = [
     # Pinned to a narrow range: an unpinned ruff floor pulled a newer release
     # whose default rules flagged 200+ pre-existing issues, turning CI red on
     # dependency-only PRs. Bump deliberately via a reviewed PR.
-    "ruff>=0.8.0,<0.9",
+    "ruff>=0.8.0,<0.17",
     "mypy>=1.14.0,<2.0",
     "types-PyYAML>=6.0.0,<7.0",
     "pre-commit>=4.0.0,<5.0",
