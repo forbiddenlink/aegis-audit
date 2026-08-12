@@ -37,17 +37,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # Use `python -m ruff`, not bare `ruff`: the hosted runner ships its own
+      # global ruff on PATH that drifts ahead of our pin, so bare `ruff` ran a
+      # much newer version whose rules flagged hundreds of pre-existing issues.
+      # `python -m` runs the ruff installed from .[dev] (pinned <0.9), which is
+      # the version this repo is formatted and linted against.
       - name: Run ruff linting
         run: |
-          ruff check aegisaudit/ tests/
+          python -m ruff check aegisaudit/ tests/
 
       - name: Run ruff formatting check
         run: |
-          ruff format --check aegisaudit/ tests/
+          python -m ruff format --check aegisaudit/ tests/
 
       - name: Run type checking with mypy
         run: |
-          mypy aegisaudit/
+          python -m mypy aegisaudit/
 
       - name: Run tests with coverage
         run: |
