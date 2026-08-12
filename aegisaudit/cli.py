@@ -21,6 +21,7 @@ from aegisaudit.history import ScanHistory
 from aegisaudit.notifications import send_webhook, send_telegram
 from aegisaudit.integrations.notion import push_to_notion
 from aegisaudit.sast.scanner import SASTScanner
+from aegisaudit.baseline import BaselineError, apply_baseline, load_baseline, write_baseline
 
 app = typer.Typer(help="AegisAudit - Security posture reports for modern web apps.")
 console = Console()
@@ -253,6 +254,16 @@ def audit(
     notion_token: Optional[str] = typer.Option(
         None, "--notion-token", envvar="NOTION_TOKEN", help="Notion integration token"
     ),
+    baseline: Optional[Path] = typer.Option(
+        None,
+        "--baseline",
+        help="Compare against this baseline file and report/gate only on NEW findings.",
+    ),
+    update_baseline: bool = typer.Option(
+        False,
+        "--update-baseline",
+        help="Write current findings to the --baseline path and exit (no gate).",
+    ),
 ) -> None:
     """
     Run a static analysis (SAST) audit on a local directory.
@@ -261,10 +272,33 @@ def audit(
     formats = _resolve_formats(format)
     fail_on_severity = _resolve_fail_on(fail_on)
 
+    if update_baseline and baseline is None:
+        # --update-baseline needs a target path; failing here (usage error) beats
+        # silently writing nothing.
+        raise typer.BadParameter("--update-baseline requires --baseline PATH")
+
     console.print(f"[bold green]Starting audit of {directory}...[/bold green]")
 
     scanner = SASTScanner()
     result = scanner.scan(directory)
+
+    if update_baseline and baseline is not None:
+        count = write_baseline(baseline, result.findings, result.tool_version)
+        console.print(f"[bold]Wrote baseline[/bold] with {count} fingerprint(s) to {baseline}.")
+        return
+
+    if baseline is not None:
+        try:
+            known = load_baseline(baseline)
+        except BaselineError as exc:
+            # A bad baseline is a usage error (exit 2), not a clean scan.
+            raise typer.BadParameter(str(exc)) from None
+        result, suppressed = apply_baseline(result, known)
+        if suppressed:
+            console.print(
+                f"[dim]{suppressed} finding(s) suppressed by baseline {baseline}.[/dim]"
+            )
+
     findings = result.findings
 
     # Display Summary

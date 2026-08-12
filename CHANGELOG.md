@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Baseline diffing** (`--baseline PATH`, `--update-baseline`): record the
+  current findings and, on later runs, report and gate only on findings that are
+  new since the baseline. Baselines store opaque fingerprints (rule + location +
+  description, line-number independent), never finding text or evidence.
 - Config models reject unknown keys (`extra="forbid"`). A typo such as
   `allowlist_urls` (the real field is `scope.allow`) now raises at load time
   instead of being silently dropped and leaving the scanner running with

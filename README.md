@@ -89,6 +89,25 @@ Exit codes follow the convention used by semgrep and osv-scanner:
 
 That distinction matters in CI: a crashed scan must not look like a clean one.
 
+### Baselining (only fail on new findings)
+
+Pointing the scanner at an existing codebase reports every pre-existing issue at
+once, which is too noisy to gate on. A baseline records the current findings so a
+later run reports and gates only on what is **new**.
+
+```bash
+# Capture the current findings as the accepted baseline
+aegis audit . --baseline .aegis-baseline.json --update-baseline
+
+# Later runs: pre-existing findings are suppressed; only new ones can fail CI
+aegis audit . --baseline .aegis-baseline.json --fail-on high
+```
+
+The baseline stores only opaque fingerprints (a hash of each finding's rule,
+location, and description) — never the finding text or evidence, so a detected
+secret is not copied into a committed file. Fingerprints ignore line numbers, so
+inserting unrelated code above a finding does not make it look new.
+
 ### Suppressing findings
 
 Real repositories contain fake credentials in test fixtures and docs. Add a
