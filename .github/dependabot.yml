@@ -1,8 +1,11 @@
-# Dependabot config — pip ecosystem (Python)
+# Dependabot config — uv ecosystem (Python)
+# The `uv` ecosystem updates pyproject.toml AND uv.lock together. The old `pip`
+# ecosystem bumped only the pyproject pins, leaving uv.lock stale after every
+# merge (CI installs from the lock via `uv sync`, so the two must stay in step).
 # Grouped patch/minor updates to reduce PR spam.
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
