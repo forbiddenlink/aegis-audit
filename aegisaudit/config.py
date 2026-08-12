@@ -1,11 +1,22 @@
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, ConfigDict, HttpUrl, Field
 from aegisaudit.policy import DEFAULT_POLICY
 
 
+# Reject unknown keys everywhere in the config tree. Pydantic's default silently
+# drops them, so a typo like `allowlist_urls` (the real field is `scope.allow`)
+# or an indentation slip in the YAML would leave the scanner running with
+# defaults while the operator believes a restriction is in force. For a security
+# tool that is the same failure class it refuses elsewhere (never silently
+# unscored, never mistake an incomplete scan for a clean one): a mis-set control
+# must fail loudly, not no-op. `policy` stays a free-form dict by design.
+_STRICT = ConfigDict(extra="forbid")
+
+
 class ScopeConfig(BaseModel):
+    model_config = _STRICT
     # Hostname allowlist. When non-empty, only these hosts (and their
     # subdomains) may be fetched -- enforced in the SSRF guard, not just
     # advisory. Empty means "any public host".
@@ -18,12 +29,14 @@ class ScopeConfig(BaseModel):
 
 
 class TargetsConfig(BaseModel):
+    model_config = _STRICT
     urls: List[str] = Field(default_factory=list)
     urls_file: Optional[Path] = None
     sitemap: Optional[HttpUrl] = None
 
 
 class LimitsConfig(BaseModel):
+    model_config = _STRICT
     rate_per_sec: float = 2.0
     timeout_sec: float = 10.0
     max_html_bytes: int = 200_000
@@ -44,6 +57,7 @@ class LimitsConfig(BaseModel):
 
 
 class AegisConfig(BaseModel):
+    model_config = _STRICT
     scope: ScopeConfig = Field(default_factory=ScopeConfig)
     targets: TargetsConfig = Field(default_factory=TargetsConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)

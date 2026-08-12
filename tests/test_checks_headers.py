@@ -6,8 +6,8 @@ from aegisaudit.config import AegisConfig
 
 @pytest.fixture
 def base_config():
-    """Base configuration with no allowlists."""
-    return AegisConfig(allowlist_urls=[], probe_files=False)
+    """Default configuration."""
+    return AegisConfig()
 
 
 @pytest.fixture
@@ -251,14 +251,21 @@ class TestInfoLeakage:
         assert any(f.severity in [Severity.LOW, Severity.INFO] for f in xpb_findings)
 
 
-class TestAllowlist:
-    """Tests for allowlist enforcement."""
+class TestScopeIsNotAHeaderConcern:
+    """The scope allowlist is enforced in the SSRF/fetch layer, not in checks.
 
-    def test_allowlist_suppresses_findings(self, base_artifact):
-        config = AegisConfig(allowlist_urls=["example.com"], probe_files=False)
-        findings = check_headers(base_artifact, config)
-        # Allowlisted URLs may suppress certain findings
-        assert isinstance(findings, list)
+    An earlier version of these tests passed a nonexistent ``allowlist_urls``
+    field (silently dropped) and asserted only ``isinstance(findings, list)``,
+    which can never fail. That gave false confidence that scope suppressed
+    header findings. It does not: check_headers reads ``config.policy`` only, so
+    scope must not change its output. This pins that boundary.
+    """
+
+    def test_scope_allow_does_not_change_header_findings(self, base_artifact):
+        from aegisaudit.config import ScopeConfig
+
+        scoped = AegisConfig(scope=ScopeConfig(allow=["example.com"]))
+        assert check_headers(base_artifact, scoped) == check_headers(base_artifact, AegisConfig())
 
     def test_non_allowlisted_url_shows_findings(self, base_config):
         artifact = ScanArtifact(
