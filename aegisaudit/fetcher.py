@@ -69,26 +69,33 @@ class Fetcher:
             allow_private=self.config.scope.allow_private,
         )
 
+    async def _get(self, url: str) -> httpx.Response:
+        """Validate the destination and every redirect hop, returning the final
+        response.
+
+        Redirects are followed manually so each hop is re-validated by the SSRF
+        guard. An attacker's target can 3xx to an internal/metadata host;
+        auto-following would leak its body into reports and outbound webhooks.
+        """
+        self._validate(url)
+        current = url
+        response = await self.client.get(current)
+        hops = 0
+        while response.is_redirect:
+            if hops >= self.config.limits.max_redirects:
+                raise SSRFError(f"too many redirects (>{self.config.limits.max_redirects})")
+            location = response.headers.get("location", "")
+            current = str(response.url.join(location))
+            self._validate(current)
+            hops += 1
+            response = await self.client.get(current)
+        return response
+
     async def fetch(self, url: str) -> Optional[ScanArtifact]:
         await self._respect_rate_limit()
         async with self.semaphore:
             try:
-                # Validate the initial destination, then follow redirects
-                # manually so each hop is re-validated. An attacker's target can
-                # 3xx to an internal/metadata host; auto-following would leak its
-                # body into reports and outbound webhooks.
-                self._validate(url)
-                current = url
-                response = await self.client.get(current)
-                hops = 0
-                while response.is_redirect:
-                    if hops >= self.config.limits.max_redirects:
-                        raise SSRFError(f"too many redirects (>{self.config.limits.max_redirects})")
-                    location = response.headers.get("location", "")
-                    current = str(response.url.join(location))
-                    self._validate(current)
-                    hops += 1
-                    response = await self.client.get(current)
+                response = await self._get(url)
 
                 # Truncate body if needed
                 body_content = response.text
@@ -108,6 +115,25 @@ class Fetcher:
             except SSRFError as e:
                 # A blocked destination is a security event, not a transient
                 # error -- surface it at warning level even without -v.
+                logger.warning("Blocked (SSRF guard) %s: %s", url, e)
+                return None
+            except Exception as e:
+                logger.warning("Error fetching %s: %s", url, e)
+                return None
+
+    async def get_text(self, url: str) -> Optional[str]:
+        """Guarded fetch returning the full response body, untruncated.
+
+        Used for sitemap XML, where truncating the body (as fetch() does for
+        HTML pages) would corrupt the document mid-tag. The SSRF guard and rate
+        limit still apply -- a sitemap URL is as attacker-influenced as any
+        other target.
+        """
+        await self._respect_rate_limit()
+        async with self.semaphore:
+            try:
+                return (await self._get(url)).text
+            except SSRFError as e:
                 logger.warning("Blocked (SSRF guard) %s: %s", url, e)
                 return None
             except Exception as e:

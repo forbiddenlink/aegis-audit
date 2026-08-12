@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sitemap discovery** (`scan --sitemap URL`, `--max-urls`): expand a sitemap
+  into scan targets, following one bounded level of sitemap-index nesting. The
+  sitemap is fetched through the SSRF guard and parsed with defusedxml so a
+  hostile sitemap cannot mount an XXE or entity-expansion attack.
 - **Baseline diffing** (`--baseline PATH`, `--update-baseline`): record the
   current findings and, on later runs, report and gate only on findings that are
   new since the baseline. Baselines store opaque fingerprints (rule + location +

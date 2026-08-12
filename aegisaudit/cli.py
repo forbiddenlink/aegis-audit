@@ -22,6 +22,7 @@ from aegisaudit.notifications import send_webhook, send_telegram
 from aegisaudit.integrations.notion import push_to_notion
 from aegisaudit.sast.scanner import SASTScanner
 from aegisaudit.baseline import BaselineError, apply_baseline, load_baseline, write_baseline
+from aegisaudit.sitemap import discover_sitemap_urls
 
 app = typer.Typer(help="AegisAudit - Security posture reports for modern web apps.")
 console = Console()
@@ -136,6 +137,17 @@ def main(
         level=logging.DEBUG if verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+
+async def _discover_sitemap(
+    sitemap_url: str, config: AegisConfig, max_urls: int
+) -> tuple[list[str], bool]:
+    """Expand a sitemap URL into scan targets, fetching through the SSRF guard."""
+    fetcher = Fetcher(config)
+    try:
+        return await discover_sitemap_urls(fetcher.get_text, sitemap_url, max_urls)
+    finally:
+        await fetcher.close()
 
 
 async def run_scan(
@@ -346,6 +358,12 @@ def scan(
         None, "--url", help="Single URL to scan (can be repeated)"
     ),
     file: Optional[Path] = typer.Option(None, "--file", help="File containing URLs to scan"),
+    sitemap: Optional[str] = typer.Option(
+        None, "--sitemap", help="Sitemap URL to expand into scan targets."
+    ),
+    max_urls: int = typer.Option(
+        200, "--max-urls", help="Cap on URLs discovered from a sitemap."
+    ),
     config_file: Optional[Path] = typer.Option(
         None, "--config", help="Path to aegis.yml config file"
     ),
@@ -402,8 +420,16 @@ def scan(
             lines = [line.strip() for line in f if line.strip()]
             target_urls.extend(lines)
 
+    if sitemap is not None:
+        discovered, truncated = asyncio.run(_discover_sitemap(sitemap, config, max_urls))
+        note = f" (capped at {max_urls})" if truncated else ""
+        console.print(
+            f"[green]Discovered {len(discovered)} URL(s) from sitemap {sitemap}{note}.[/green]"
+        )
+        target_urls.extend(discovered)
+
     if not target_urls:
-        console.print("[red]No targets specified.[/red] Provide --url or --file.")
+        console.print("[red]No targets specified.[/red] Provide --url, --file, or --sitemap.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
 
     # Probing Logic: Expand targets

@@ -50,6 +50,9 @@ aegis scan --url https://example.com
 # Deep scan (with file probing) and an HTML report
 aegis scan --url https://example.com --probe --format html
 
+# Scan every page listed in a sitemap (bounded by --max-urls)
+aegis scan --sitemap https://example.com/sitemap.xml --max-urls 100
+
 # Send an alert to Discord
 aegis scan --url https://example.com --webhook "https://discord.com/api/webhooks/..."
 ```
