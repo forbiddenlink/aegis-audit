@@ -16,6 +16,13 @@ COPY . .
 
 RUN pip install --no-cache-dir .
 
+# Drop root: the scanner never needs privilege, and running as root turns any
+# parser/dependency bug into a container-escape primitive (trivy DS-0002). Scan
+# output goes to the working directory, so run from a mounted, writable volume,
+# e.g. `docker run -v "$PWD:/work" -w /work aegis audit .`.
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+
 # Entrypoint
 ENTRYPOINT ["aegis"]
 CMD ["--help"]

@@ -10,6 +10,16 @@ with an attached IAM role that is credential theft.
 This module decides whether a destination is allowed to be fetched. It is
 applied to the initial URL AND re-applied to every redirect hop, because the
 first hop can be a perfectly innocent public host that 302s inward.
+
+Residual risk (accepted): validate_url resolves the host with getaddrinfo, but
+the HTTP client re-resolves the same name when it opens the connection. A DNS
+record that flips between the two lookups (classic rebinding) could pass
+validation on a public answer and then connect to a private one. Closing this
+fully means pinning the validated IP into the connection (connect to the address
+we checked, carry the original Host header) rather than re-resolving. That is a
+transport-layer change to the fetcher; it is tracked, not yet done. The window is
+narrow and the ``--probe`` threat model already assumes an authorised operator,
+so this is documented and accepted rather than silently ignored.
 """
 
 from __future__ import annotations
