@@ -194,8 +194,17 @@ class TestBaseline:
         bl = tmp_path / "baseline.json"
         result = runner.invoke(
             app,
-            ["audit", str(tmp_path), "--out", str(tmp_path / "o"), "--format", "json",
-             "--baseline", str(bl), "--update-baseline"],
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                str(tmp_path / "o"),
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--update-baseline",
+            ],
         )
         assert result.exit_code == 0
         assert bl.exists()
@@ -208,14 +217,33 @@ class TestBaseline:
         out = str(tmp_path / "o")
         runner.invoke(
             app,
-            ["audit", str(tmp_path), "--out", out, "--format", "json",
-             "--baseline", str(bl), "--update-baseline"],
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--update-baseline",
+            ],
         )
         # Same finding, now baselined: --fail-on high must pass.
         result = runner.invoke(
             app,
-            ["audit", str(tmp_path), "--out", out, "--format", "json",
-             "--baseline", str(bl), "--fail-on", "high"],
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--fail-on",
+                "high",
+            ],
         )
         assert result.exit_code == 0
 
@@ -225,15 +253,34 @@ class TestBaseline:
         out = str(tmp_path / "o")
         runner.invoke(
             app,
-            ["audit", str(tmp_path), "--out", out, "--format", "json",
-             "--baseline", str(bl), "--update-baseline"],
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--update-baseline",
+            ],
         )
         # Introduce a NEW finding not in the baseline.
         (tmp_path / "new.py").write_text(PRIVATE_KEY_FILE)
         result = runner.invoke(
             app,
-            ["audit", str(tmp_path), "--out", out, "--format", "json",
-             "--baseline", str(bl), "--fail-on", "high"],
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--fail-on",
+                "high",
+            ],
         )
         assert result.exit_code == 1
 
@@ -249,7 +296,15 @@ class TestBaseline:
         self._bad(tmp_path)
         result = runner.invoke(
             app,
-            ["audit", str(tmp_path), "--out", str(tmp_path / "o"), "--format", "json",
-             "--baseline", str(tmp_path / "nope.json")],
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                str(tmp_path / "o"),
+                "--format",
+                "json",
+                "--baseline",
+                str(tmp_path / "nope.json"),
+            ],
         )
         assert result.exit_code >= 2

@@ -307,9 +307,7 @@ def audit(
             raise typer.BadParameter(str(exc)) from None
         result, suppressed = apply_baseline(result, known)
         if suppressed:
-            console.print(
-                f"[dim]{suppressed} finding(s) suppressed by baseline {baseline}.[/dim]"
-            )
+            console.print(f"[dim]{suppressed} finding(s) suppressed by baseline {baseline}.[/dim]")
 
     findings = result.findings
 
@@ -361,9 +359,7 @@ def scan(
     sitemap: Optional[str] = typer.Option(
         None, "--sitemap", help="Sitemap URL to expand into scan targets."
     ),
-    max_urls: int = typer.Option(
-        200, "--max-urls", help="Cap on URLs discovered from a sitemap."
-    ),
+    max_urls: int = typer.Option(200, "--max-urls", help="Cap on URLs discovered from a sitemap."),
     config_file: Optional[Path] = typer.Option(
         None, "--config", help="Path to aegis.yml config file"
     ),
