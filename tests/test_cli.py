@@ -181,3 +181,130 @@ class TestAuditReportContents:
         runner.invoke(app, ["audit", str(tmp_path), "--out", str(out), "--format", "json"])
         data = json.loads((out / "report.json").read_text())
         assert data["summary"]["overall_score"] < 100.0
+
+
+class TestBaseline:
+    """`--baseline` gates only on findings that are new since the baseline."""
+
+    def _bad(self, tmp_path):
+        (tmp_path / "bad.py").write_text(AWS_KEY_FILE)
+
+    def test_update_baseline_writes_and_exits_0(self, tmp_path):
+        self._bad(tmp_path)
+        bl = tmp_path / "baseline.json"
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                str(tmp_path / "o"),
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--update-baseline",
+            ],
+        )
+        assert result.exit_code == 0
+        assert bl.exists()
+        # The finding's evidence (the fake AWS key) must not be persisted.
+        assert "AKIAIOSFODNN7EXAMPLE" not in bl.read_text()
+
+    def test_baselined_finding_no_longer_trips_gate(self, tmp_path):
+        self._bad(tmp_path)
+        bl = tmp_path / "baseline.json"
+        out = str(tmp_path / "o")
+        runner.invoke(
+            app,
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--update-baseline",
+            ],
+        )
+        # Same finding, now baselined: --fail-on high must pass.
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--fail-on",
+                "high",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_new_finding_still_trips_gate_against_baseline(self, tmp_path):
+        self._bad(tmp_path)
+        bl = tmp_path / "baseline.json"
+        out = str(tmp_path / "o")
+        runner.invoke(
+            app,
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--update-baseline",
+            ],
+        )
+        # Introduce a NEW finding not in the baseline.
+        (tmp_path / "new.py").write_text(PRIVATE_KEY_FILE)
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                out,
+                "--format",
+                "json",
+                "--baseline",
+                str(bl),
+                "--fail-on",
+                "high",
+            ],
+        )
+        assert result.exit_code == 1
+
+    def test_update_baseline_without_path_is_usage_error(self, tmp_path):
+        self._bad(tmp_path)
+        result = runner.invoke(
+            app,
+            ["audit", str(tmp_path), "--out", str(tmp_path / "o"), "--update-baseline"],
+        )
+        assert result.exit_code >= 2
+
+    def test_missing_baseline_file_is_usage_error(self, tmp_path):
+        self._bad(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "audit",
+                str(tmp_path),
+                "--out",
+                str(tmp_path / "o"),
+                "--format",
+                "json",
+                "--baseline",
+                str(tmp_path / "nope.json"),
+            ],
+        )
+        assert result.exit_code >= 2

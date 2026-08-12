@@ -6,7 +6,7 @@ from aegisaudit.config import AegisConfig
 
 @pytest.fixture
 def base_config():
-    return AegisConfig(allowlist_urls=[], probe_files=False)
+    return AegisConfig()
 
 
 @pytest.fixture

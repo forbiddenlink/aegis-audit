@@ -30,28 +30,34 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
+
+      # Install from uv.lock rather than `pip install -e .[dev]`. Plain pip
+      # resolves the dev tools to their latest release, which pulled ruff 0.16.2
+      # despite the `<0.9` pin and failed CI on version drift instead of on the
+      # code. `uv sync` installs the exact, hash-locked versions the repo is
+      # developed against (ruff 0.8.6), so CI matches local.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          uv sync --extra dev --python ${{ matrix.python-version }}
 
       - name: Run ruff linting
         run: |
-          ruff check aegisaudit/ tests/
+          uv run ruff check aegisaudit/ tests/
 
       - name: Run ruff formatting check
         run: |
-          ruff format --check aegisaudit/ tests/
+          uv run ruff format --check aegisaudit/ tests/
 
       - name: Run type checking with mypy
         run: |
-          mypy aegisaudit/
+          uv run mypy aegisaudit/
 
       - name: Run tests with coverage
         run: |
-          pytest --cov=aegisaudit --cov-report=xml --cov-report=term-missing --cov-fail-under=60
+          uv run pytest --cov=aegisaudit --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7

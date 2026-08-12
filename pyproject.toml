@@ -29,6 +29,11 @@ dependencies = [
     "jinja2>=3.1.0,<4.0",
     "pyyaml>=6.0.0,<7.0",
     "dnspython>=2.4.0,<3.0",
+    # Sitemap parsing consumes attacker-controlled XML (a scanned site's
+    # sitemap). defusedxml blocks entity-expansion and external-entity (XXE)
+    # attacks that stdlib xml.etree is vulnerable to; declared so the safe
+    # parser is always present rather than a transitive accident.
+    "defusedxml>=0.7.0,<0.8",
     # Python dependency vulnerability scanning. Declared so `aegis audit`
     # actually runs the check rather than silently no-opping when the binary is
     # absent (the failure mode of the old `safety` shell-out). npm audit stays
@@ -76,7 +81,7 @@ strict = true
 # future untyped dependency into Any instead of a strict-mode error. List the
 # specific untyped modules here so strict mode stays meaningful.
 [[tool.mypy.overrides]]
-module = ["pip_audit.*"]
+module = ["pip_audit.*", "defusedxml.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

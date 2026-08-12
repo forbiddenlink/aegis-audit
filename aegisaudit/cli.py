@@ -21,6 +21,8 @@ from aegisaudit.history import ScanHistory
 from aegisaudit.notifications import send_webhook, send_telegram
 from aegisaudit.integrations.notion import push_to_notion
 from aegisaudit.sast.scanner import SASTScanner
+from aegisaudit.baseline import BaselineError, apply_baseline, load_baseline, write_baseline
+from aegisaudit.sitemap import discover_sitemap_urls
 
 app = typer.Typer(help="AegisAudit - Security posture reports for modern web apps.")
 console = Console()
@@ -135,6 +137,17 @@ def main(
         level=logging.DEBUG if verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+
+async def _discover_sitemap(
+    sitemap_url: str, config: AegisConfig, max_urls: int
+) -> tuple[list[str], bool]:
+    """Expand a sitemap URL into scan targets, fetching through the SSRF guard."""
+    fetcher = Fetcher(config)
+    try:
+        return await discover_sitemap_urls(fetcher.get_text, sitemap_url, max_urls)
+    finally:
+        await fetcher.close()
 
 
 async def run_scan(
@@ -253,6 +266,16 @@ def audit(
     notion_token: Optional[str] = typer.Option(
         None, "--notion-token", envvar="NOTION_TOKEN", help="Notion integration token"
     ),
+    baseline: Optional[Path] = typer.Option(
+        None,
+        "--baseline",
+        help="Compare against this baseline file and report/gate only on NEW findings.",
+    ),
+    update_baseline: bool = typer.Option(
+        False,
+        "--update-baseline",
+        help="Write current findings to the --baseline path and exit (no gate).",
+    ),
 ) -> None:
     """
     Run a static analysis (SAST) audit on a local directory.
@@ -261,10 +284,31 @@ def audit(
     formats = _resolve_formats(format)
     fail_on_severity = _resolve_fail_on(fail_on)
 
+    if update_baseline and baseline is None:
+        # --update-baseline needs a target path; failing here (usage error) beats
+        # silently writing nothing.
+        raise typer.BadParameter("--update-baseline requires --baseline PATH")
+
     console.print(f"[bold green]Starting audit of {directory}...[/bold green]")
 
     scanner = SASTScanner()
     result = scanner.scan(directory)
+
+    if update_baseline and baseline is not None:
+        count = write_baseline(baseline, result.findings, result.tool_version)
+        console.print(f"[bold]Wrote baseline[/bold] with {count} fingerprint(s) to {baseline}.")
+        return
+
+    if baseline is not None:
+        try:
+            known = load_baseline(baseline)
+        except BaselineError as exc:
+            # A bad baseline is a usage error (exit 2), not a clean scan.
+            raise typer.BadParameter(str(exc)) from None
+        result, suppressed = apply_baseline(result, known)
+        if suppressed:
+            console.print(f"[dim]{suppressed} finding(s) suppressed by baseline {baseline}.[/dim]")
+
     findings = result.findings
 
     # Display Summary
@@ -312,6 +356,10 @@ def scan(
         None, "--url", help="Single URL to scan (can be repeated)"
     ),
     file: Optional[Path] = typer.Option(None, "--file", help="File containing URLs to scan"),
+    sitemap: Optional[str] = typer.Option(
+        None, "--sitemap", help="Sitemap URL to expand into scan targets."
+    ),
+    max_urls: int = typer.Option(200, "--max-urls", help="Cap on URLs discovered from a sitemap."),
     config_file: Optional[Path] = typer.Option(
         None, "--config", help="Path to aegis.yml config file"
     ),
@@ -368,8 +416,16 @@ def scan(
             lines = [line.strip() for line in f if line.strip()]
             target_urls.extend(lines)
 
+    if sitemap is not None:
+        discovered, truncated = asyncio.run(_discover_sitemap(sitemap, config, max_urls))
+        note = f" (capped at {max_urls})" if truncated else ""
+        console.print(
+            f"[green]Discovered {len(discovered)} URL(s) from sitemap {sitemap}{note}.[/green]"
+        )
+        target_urls.extend(discovered)
+
     if not target_urls:
-        console.print("[red]No targets specified.[/red] Provide --url or --file.")
+        console.print("[red]No targets specified.[/red] Provide --url, --file, or --sitemap.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
 
     # Probing Logic: Expand targets

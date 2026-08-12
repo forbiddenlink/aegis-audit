@@ -11,7 +11,7 @@ Phase 2 (Product polish):
 
 - SARIF report output (for CI integrations)
 - scoring rubric + category scores
-- baseline comparison (diff vs last scan)
+- baseline comparison (diff vs last scan) — shipped (`--baseline`)
 - SQLite scan history (optional)
 
 Phase 3 (Portfolio flex):
