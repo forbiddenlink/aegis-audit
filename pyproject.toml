@@ -25,7 +25,7 @@ dependencies = [
     "httpx>=0.27.0,<1.0",
     "typer>=0.27.1,<1.0",
     "pydantic>=2.0.0,<3.0",
-    "rich>=13.0.0,<16.0",
+    "rich>=15.0.0,<16.0",
     "jinja2>=3.1.0,<4.0",
     "pyyaml>=6.0.0,<7.0",
     "dnspython>=2.4.0,<3.0",
@@ -48,7 +48,7 @@ Issues = "https://github.com/forbiddenlink/aegis-audit/issues"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0,<10.0",
+    "pytest>=9.1.1,<10.0",
     "pytest-cov>=4.1.0,<8.0",
     "pytest-asyncio>=0.23.0,<2.0",
     "pytest-mock>=3.12.0,<4.0",
@@ -68,7 +68,7 @@ dev = [
 aegis = "aegisaudit.cli:app"
 
 [build-system]
-requires = ["hatchling>=1.27,<2"]
+requires = ["hatchling>=1.32.0,<2"]
 build-backend = "hatchling.build"
 
 [tool.ruff]
@@ -76,10 +76,10 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-# Pin the enforced rule set explicitly. Ruff's own "default" selection has
-# grown across releases (0.8 -> 0.16 added pyupgrade/isort/bugbear/bandit/etc
-# categories that flagged 276 pre-existing findings with zero rule changes on
-# our end). Without an explicit select, a routine dependency-bump PR silently
+# Pin the enforced rule set explicitly. Ruff's own "default" selection grew
+# between 0.8 and 0.16 (pyupgrade/isort/bugbear/bandit/etc categories now on
+# by default) and flags 276 pre-existing findings with zero rule changes on
+# our end. Without an explicit select, a routine dependency-bump PR silently
 # widens what CI enforces. Locked to ruff 0.8's default (E4, E7, E9, F) so a
 # ruff version bump can never change the enforced rules without a deliberate,
 # reviewed edit here.
