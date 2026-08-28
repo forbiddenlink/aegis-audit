@@ -34,10 +34,11 @@ def _result(severities=(), score: float = 100.0) -> ScanResult:
 def test_parse_formats_comma_and_repeat():
     assert parse_formats(["json,sarif"]) == {"json", "sarif"}
     assert parse_formats(["json", "html"]) == {"json", "html"}
+    assert parse_formats(["summary"]) == {"summary"}
 
 
 def test_parse_formats_all_expands():
-    assert parse_formats(["all"]) == {"json", "sarif", "html"}
+    assert parse_formats(["all"]) == {"json", "sarif", "html", "summary"}
 
 
 def test_parse_formats_ignores_blank_parts():

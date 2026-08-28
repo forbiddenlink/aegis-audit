@@ -16,7 +16,12 @@ from aegisaudit.fetcher import Fetcher
 from aegisaudit.gating import gate_failure_reason, parse_formats, parse_severity
 from aegisaudit.models import ScanResult, Severity
 from aegisaudit.runner import Runner
-from aegisaudit.reporters import generate_json_report, generate_sarif_report, generate_html_report
+from aegisaudit.reporters import (
+    generate_html_report,
+    generate_json_report,
+    generate_sarif_report,
+    generate_summary_report,
+)
 from aegisaudit.history import ScanHistory
 from aegisaudit.notifications import send_webhook, send_telegram
 from aegisaudit.integrations.notion import push_to_notion
@@ -102,6 +107,11 @@ def _write_reports(result: ScanResult, out: Path, formats: Set[str]) -> None:
         path = out / "report.html"
         generate_html_report(result, path)
         console.print(f"HTML Report: [link=file://{path}]{path}[/link]")
+
+    if "summary" in formats:
+        path = out / "summary.json"
+        generate_summary_report(result, path)
+        console.print(f"Summary Report: [link=file://{path}]{path}[/link]")
 
 
 def _apply_gate(
@@ -293,6 +303,7 @@ def audit(
 
     scanner = SASTScanner()
     result = scanner.scan(directory)
+    result.finished_at = datetime.now()
 
     if update_baseline and baseline is not None:
         count = write_baseline(baseline, result.findings, result.tool_version)

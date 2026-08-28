@@ -182,6 +182,15 @@ class TestAuditReportContents:
         data = json.loads((out / "report.json").read_text())
         assert data["summary"]["overall_score"] < 100.0
 
+    def test_summary_report_marks_audit_completion_time(self, tmp_path):
+        (tmp_path / "clean.py").write_text("print('ok')\n")
+        out = tmp_path / "o"
+        result = runner.invoke(app, ["audit", str(tmp_path), "--out", str(out), "--format", "summary"])
+
+        assert result.exit_code == 0
+        data = json.loads((out / "summary.json").read_text())
+        assert data["finished_at"] is not None
+
 
 class TestBaseline:
     """`--baseline` gates only on findings that are new since the baseline."""

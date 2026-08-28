@@ -1,9 +1,12 @@
-import pytest
 import json
-from aegisaudit.models import ScanResult, ScanSummary, Finding, Severity
+
+import pytest
+
+from aegisaudit.models import Finding, ScanResult, ScanSummary, Severity
+from aegisaudit.reporters.html_report import generate_html_report
 from aegisaudit.reporters.json_report import generate_json_report
 from aegisaudit.reporters.sarif_report import generate_sarif_report
-from aegisaudit.reporters.html_report import generate_html_report
+from aegisaudit.reporters.summary_report import generate_summary_report, to_summary
 
 
 @pytest.fixture
@@ -90,6 +93,45 @@ class TestJSONReport:
         assert "summary" in data
         assert sum(data["summary"]["counts_by_severity"].values()) == 3
         assert abs(data["summary"]["overall_score"] - 65.0) < 0.01
+
+
+class TestSummaryReport:
+    """Tests for compact machine-readable report generation."""
+
+    def test_summary_report_created(self, sample_scan_result, tmp_path):
+        output_file = tmp_path / "summary.json"
+        generate_summary_report(sample_scan_result, output_file)
+
+        assert output_file.exists()
+
+    def test_summary_report_contains_hq_signal_fields(self, sample_scan_result, tmp_path):
+        output_file = tmp_path / "summary.json"
+        generate_summary_report(sample_scan_result, output_file)
+
+        with open(output_file) as f:
+            data = json.load(f)
+
+        assert data["source"] == "aegis-audit"
+        assert data["status"] == "fail"
+        assert data["severity"] == "high"
+        assert data["overall_score"] == 65.0
+        assert data["finding_count"] == 3
+        assert data["counts_by_severity"]["high"] == 1
+        assert data["failed_target_count"] == 0
+        assert data["top_findings"][0]["title"] == "Missing HSTS Header"
+
+    def test_summary_status_warns_on_medium_without_high_or_critical(self, sample_scan_result):
+        sample_scan_result.findings = [
+            finding
+            for finding in sample_scan_result.findings
+            if finding.severity != Severity.HIGH
+        ]
+        sample_scan_result.summary.counts_by_severity = {"medium": 1, "low": 1}
+
+        summary = to_summary(sample_scan_result)
+
+        assert summary["status"] == "warn"
+        assert summary["severity"] == "medium"
 
 
 class TestSARIFReport:

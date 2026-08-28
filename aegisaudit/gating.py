@@ -14,14 +14,12 @@ key" from "the scanner crashed". Tools that collapse both into exit 1
 (gitleaks, pip-audit) make a broken scan look like a clean one.
 """
 
-from typing import List, Optional, Set
-
 from aegisaudit.models import ScanResult, Severity
 
-VALID_FORMATS: Set[str] = {"json", "sarif", "html"}
+VALID_FORMATS: set[str] = {"json", "sarif", "html", "summary"}
 
 # Ascending. Used to resolve "--fail-on high" to "high or worse".
-SEVERITY_ORDER: List[Severity] = [
+SEVERITY_ORDER: list[Severity] = [
     Severity.INFO,
     Severity.LOW,
     Severity.MEDIUM,
@@ -30,7 +28,7 @@ SEVERITY_ORDER: List[Severity] = [
 ]
 
 
-def parse_formats(values: List[str]) -> Set[str]:
+def parse_formats(values: list[str]) -> set[str]:
     """Resolve --format values into a set of report formats.
 
     Accepts repeated flags (--format json --format sarif) and comma-separated
@@ -39,7 +37,7 @@ def parse_formats(values: List[str]) -> Set[str]:
     zero reports while still exiting 0. An unrecognised format is an error
     here rather than a silent no-op.
     """
-    formats: Set[str] = set()
+    formats: set[str] = set()
     for value in values:
         for part in value.split(","):
             part = part.strip().lower()
@@ -74,9 +72,9 @@ def findings_at_or_above(result: ScanResult, threshold: Severity) -> int:
 
 def gate_failure_reason(
     result: ScanResult,
-    fail_on: Optional[Severity] = None,
-    fail_under: Optional[float] = None,
-) -> Optional[str]:
+    fail_on: Severity | None = None,
+    fail_under: float | None = None,
+) -> str | None:
     """Return why the build should fail, or None if it passes.
 
     Gating is opt-in: with neither option set this always returns None, so

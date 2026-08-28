@@ -1,0 +1,19 @@
+{
+	"allowedForCodex": true,
+	"automationLevel": "manual",
+	"confidentialContext": "none",
+	"context": "personal",
+	"hosting": [],
+	"kind": "tool",
+	"lastReviewedAt": "2026-08-27",
+	"lifecycle": "prototype",
+	"observability": [],
+	"ownerContext": "personal",
+	"surface": "internal",
+	"systems": ["solo-control-tower", "security"],
+	"tags": ["audit", "mypy", "pydantic", "pytest", "ruff", "typer"],
+	"urls": {
+		"repository": "https://github.com/forbiddenlink/aegis-audit"
+	},
+	"notes": "Security/audit CLI candidate for feeding hq security posture and repo hardening signals."
+}

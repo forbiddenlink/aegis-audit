@@ -3,3 +3,5 @@
 # documented example key ID and a throwaway, not real credentials. See
 # tests/test_secret_patterns.py.
 tests/test_secret_patterns.py:aws-access-token:25
+27f4830:tests/test_sast_scanner.py:gcp-api-key:49
+5fd3d27:tests/test_sast_scanner.py:gcp-api-key:49
