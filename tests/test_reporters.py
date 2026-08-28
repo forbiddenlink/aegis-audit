@@ -122,9 +122,7 @@ class TestSummaryReport:
 
     def test_summary_status_warns_on_medium_without_high_or_critical(self, sample_scan_result):
         sample_scan_result.findings = [
-            finding
-            for finding in sample_scan_result.findings
-            if finding.severity != Severity.HIGH
+            finding for finding in sample_scan_result.findings if finding.severity != Severity.HIGH
         ]
         sample_scan_result.summary.counts_by_severity = {"medium": 1, "low": 1}
 

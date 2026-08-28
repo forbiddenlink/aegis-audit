@@ -185,7 +185,9 @@ class TestAuditReportContents:
     def test_summary_report_marks_audit_completion_time(self, tmp_path):
         (tmp_path / "clean.py").write_text("print('ok')\n")
         out = tmp_path / "o"
-        result = runner.invoke(app, ["audit", str(tmp_path), "--out", str(out), "--format", "summary"])
+        result = runner.invoke(
+            app, ["audit", str(tmp_path), "--out", str(out), "--format", "summary"]
+        )
 
         assert result.exit_code == 0
         data = json.loads((out / "summary.json").read_text())
