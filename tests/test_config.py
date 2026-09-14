@@ -40,3 +40,10 @@ def test_load_config_rejects_typo_in_yaml(tmp_path: Path):
 
 def test_load_config_missing_file_returns_defaults(tmp_path: Path):
     assert load_config(tmp_path / "nope.yml").scope.allow == []
+
+
+def test_shipped_example_config_loads():
+    example = Path(__file__).resolve().parents[1] / "examples" / "aegis-config.yml"
+    cfg = load_config(example)
+    assert cfg.limits.rate_per_sec == 2.0
+    assert cfg.policy["required_headers"]["strict-transport-security"]["min_max_age"] == 15552000

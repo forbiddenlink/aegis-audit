@@ -6,6 +6,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Callable, List, Optional, Set, TypeVar, cast
 from datetime import datetime
+from urllib.parse import urlparse
 
 from rich.console import Console
 from rich.table import Table
@@ -14,7 +15,7 @@ from aegisaudit.models import _tool_version
 from aegisaudit.config import load_config, AegisConfig
 from aegisaudit.fetcher import Fetcher
 from aegisaudit.gating import gate_failure_reason, parse_formats, parse_severity
-from aegisaudit.models import ScanResult, Severity
+from aegisaudit.models import Finding, ScanResult, Severity
 from aegisaudit.runner import Runner
 from aegisaudit.reporters import (
     generate_html_report,
@@ -87,6 +88,104 @@ def _resolve_fail_on(fail_on: Optional[str]) -> Optional[Severity]:
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=EXIT_USAGE_ERROR) from None
+
+
+def _severity_style(severity: Severity) -> str:
+    """Rich markup for a severity. CRITICAL must not fall through to green."""
+    return {
+        Severity.CRITICAL: "bold red",
+        Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "blue",
+        Severity.INFO: "dim",
+    }.get(severity, "white")
+
+
+def _print_findings(
+    findings: List[Finding], title: str, location: Callable[[Finding], str]
+) -> None:
+    if not findings:
+        console.print("[green]No issues found![/green]")
+        return
+    table = Table(title=title)
+    table.add_column("Severity", style="bold")
+    table.add_column("Finding", style="white")
+    table.add_column("Location", style="cyan")
+    for finding in findings:
+        color = _severity_style(finding.severity)
+        table.add_row(
+            f"[{color}]{finding.severity.upper()}[/{color}]",
+            finding.title,
+            location(finding),
+        )
+    console.print(table)
+
+
+def _audit_location(finding: Finding) -> str:
+    loc = finding.evidence if finding.evidence else finding.url
+    if len(loc) > 60:
+        loc = loc[:57] + "..."
+    return loc
+
+
+def _apply_baseline_result(
+    result: ScanResult,
+    baseline: Optional[Path],
+    update_baseline: bool,
+) -> Optional[ScanResult]:
+    """Write or apply a baseline. None means a baseline was written; skip gate."""
+    if update_baseline and baseline is None:
+        console.print("[red]--update-baseline requires --baseline PATH[/red]")
+        raise typer.Exit(code=EXIT_USAGE_ERROR)
+    if update_baseline and baseline is not None:
+        count = write_baseline(baseline, result.findings, result.tool_version)
+        console.print(f"[bold]Wrote baseline[/bold] with {count} fingerprint(s) to {baseline}.")
+        return None
+    if baseline is not None:
+        try:
+            known = load_baseline(baseline)
+        except BaselineError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=EXIT_USAGE_ERROR) from None
+        result, suppressed = apply_baseline(result, known)
+        if suppressed:
+            console.print(f"[dim]{suppressed} finding(s) suppressed by baseline {baseline}.[/dim]")
+    return result
+
+
+def expand_scan_targets(urls: List[str], *, probe: bool) -> List[str]:
+    """Always fetch RFC 9116 security.txt; with --probe, also .env and .git.
+
+    Mozilla Observatory and securitytxt.org treat /.well-known/security.txt as
+    a passive disclosure file, not an active probe, so it is fetched even
+    without --probe. Exposure paths (.env, .git) stay opt-in.
+    """
+    expanded: List[str] = []
+    seen: Set[str] = set()
+
+    def add(url: str) -> None:
+        if url not in seen:
+            seen.add(url)
+            expanded.append(url)
+
+    origins: List[str] = []
+    origin_seen: Set[str] = set()
+    for url in urls:
+        add(url)
+        parsed = urlparse(url)
+        if parsed.scheme and parsed.netloc:
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            if origin not in origin_seen:
+                origin_seen.add(origin)
+                origins.append(origin)
+
+    for origin in origins:
+        add(f"{origin}/.well-known/security.txt")
+        if probe:
+            add(f"{origin}/.env")
+            add(f"{origin}/.git/HEAD")
+
+    return expanded
 
 
 def _write_reports(result: ScanResult, out: Path, formats: Set[str]) -> None:
@@ -167,6 +266,8 @@ async def run_scan(
     formats: Set[str],
     save_history: bool = True,
     webhook: Optional[str] = None,
+    baseline: Optional[Path] = None,
+    update_baseline: bool = False,
 ) -> Optional[ScanResult]:
     console.print(f"[bold green]Starting scan against {len(urls)} targets...[/bold green]")
     fetcher = Fetcher(config)
@@ -194,34 +295,18 @@ async def run_scan(
         result.failed_targets = failed_targets
         result.finished_at = datetime.now()
 
+        finalized = _apply_baseline_result(result, baseline, update_baseline)
+        if finalized is None:
+            # --update-baseline: fingerprints written, skip reports and gate.
+            return result
+        result = finalized
+
         # Display Summary
         console.print("\n[bold]Scan Summary:[/bold]")
         console.print(
             f"Overall Score: [bold cyan]{result.summary.overall_score:.1f}[/bold cyan] / 100"
         )
-
-        # Display Findings
-        if result.findings:
-            table = Table(title="Security Findings")
-            table.add_column("Severity", style="bold")
-            table.add_column("Finding", style="white")
-            table.add_column("URL", style="cyan")
-
-            for finding in result.findings:
-                color = "green"
-                if finding.severity == "high":
-                    color = "red"
-                elif finding.severity == "medium":
-                    color = "yellow"
-                elif finding.severity == "low":
-                    color = "blue"
-
-                table.add_row(
-                    f"[{color}]{finding.severity.upper()}[/{color}]", finding.title, finding.url
-                )
-            console.print(table)
-        else:
-            console.print("[green]No issues found![/green]")
+        _print_findings(result.findings, "Security Findings", lambda f: f.url)
 
         _write_reports(result, output_dir, formats)
 
@@ -294,61 +379,22 @@ def audit(
     formats = _resolve_formats(format)
     fail_on_severity = _resolve_fail_on(fail_on)
 
-    if update_baseline and baseline is None:
-        # --update-baseline needs a target path; failing here (usage error) beats
-        # silently writing nothing.
-        raise typer.BadParameter("--update-baseline requires --baseline PATH")
-
     console.print(f"[bold green]Starting audit of {directory}...[/bold green]")
 
     scanner = SASTScanner()
     result = scanner.scan(directory)
     result.finished_at = datetime.now()
 
-    if update_baseline and baseline is not None:
-        count = write_baseline(baseline, result.findings, result.tool_version)
-        console.print(f"[bold]Wrote baseline[/bold] with {count} fingerprint(s) to {baseline}.")
+    finalized = _apply_baseline_result(result, baseline, update_baseline)
+    if finalized is None:
         return
-
-    if baseline is not None:
-        try:
-            known = load_baseline(baseline)
-        except BaselineError as exc:
-            # A bad baseline is a usage error (exit 2), not a clean scan.
-            raise typer.BadParameter(str(exc)) from None
-        result, suppressed = apply_baseline(result, known)
-        if suppressed:
-            console.print(f"[dim]{suppressed} finding(s) suppressed by baseline {baseline}.[/dim]")
-
+    result = finalized
     findings = result.findings
 
     # Display Summary
     console.print(f"\n[bold]Audit Complete found {len(findings)} issues.[/bold]")
     console.print(f"Overall Score: [bold cyan]{result.summary.overall_score:.1f}[/bold cyan] / 100")
-    if findings:
-        table = Table(title="Audit Findings")
-        table.add_column("Severity", style="bold")
-        table.add_column("Type", style="white")
-        table.add_column("Location", style="cyan")
-
-        for f in findings:
-            color = "green"
-            if f.severity == Severity.HIGH:
-                color = "red"
-            elif f.severity == Severity.MEDIUM:
-                color = "yellow"
-            elif f.severity == Severity.LOW:
-                color = "blue"
-
-            # Truncate evidence/location for CLI
-            loc = f.evidence if f.evidence else f.url
-            if len(loc) > 60:
-                loc = loc[:57] + "..."
-
-            table.add_row(f"[{color}]{f.severity.upper()}[/{color}]", f.title, loc)
-        console.print(table)
-    else:
-        console.print("[green]No issues found![/green]")
+    _print_findings(findings, "Audit Findings", _audit_location)
 
     _write_reports(result, out, formats)
 
@@ -404,12 +450,25 @@ def scan(
     notion_token: Optional[str] = typer.Option(
         None, "--notion-token", envvar="NOTION_TOKEN", help="Notion integration token"
     ),
+    baseline: Optional[Path] = typer.Option(
+        None,
+        "--baseline",
+        help="Compare against this baseline file and report/gate only on NEW findings.",
+    ),
+    update_baseline: bool = typer.Option(
+        False,
+        "--update-baseline",
+        help="Write current findings to the --baseline path and exit (no gate).",
+    ),
 ) -> None:
     """
     Run a security posture scan against target URLs.
     """
     formats = _resolve_formats(format)
     fail_on_severity = _resolve_fail_on(fail_on)
+    if update_baseline and baseline is None:
+        console.print("[red]--update-baseline requires --baseline PATH[/red]")
+        raise typer.Exit(code=EXIT_USAGE_ERROR)
 
     config = load_config(config_file)
     target_urls = []
@@ -439,23 +498,16 @@ def scan(
         console.print("[red]No targets specified.[/red] Provide --url, --file, or --sitemap.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
 
-    # Probing Logic: Expand targets
+    n_user = len(target_urls)
+    target_urls = expand_scan_targets(target_urls, probe=probe)
+    extra = len(target_urls) - n_user
     if probe:
-        expanded_urls = []
-        for url in target_urls:
-            expanded_urls.append(url)  # Keep original
-            # Remove trailing slash for appending
-            base = url.rstrip("/")
-            expanded_urls.append(f"{base}/.env")
-            expanded_urls.append(f"{base}/.git/HEAD")
-            # Fetch the RFC 9116 disclosure file so check_security_txt can
-            # actually validate it -- without this it only fires when the user
-            # names a security.txt URL by hand.
-            expanded_urls.append(f"{base}/.well-known/security.txt")
-            # We could add more here (wp-config, etc.)
-        target_urls = expanded_urls
         console.print(
             f"[yellow]Probing enabled. Target list expanded to {len(target_urls)} URLs.[/yellow]"
+        )
+    elif extra:
+        console.print(
+            f"[dim]Fetching {extra} RFC 9116 security.txt path(s) in addition to the scan targets.[/dim]"
         )
 
     result = asyncio.run(
@@ -466,6 +518,8 @@ def scan(
             formats=formats,
             save_history=True,
             webhook=webhook,
+            baseline=baseline,
+            update_baseline=update_baseline,
         )
     )
 
@@ -475,6 +529,9 @@ def scan(
         # "no issues found".
         console.print("[red]No targets could be fetched.[/red]")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
+
+    if update_baseline:
+        return
 
     if telegram_token and telegram_chat_id:
         send_telegram(telegram_token, telegram_chat_id, result)

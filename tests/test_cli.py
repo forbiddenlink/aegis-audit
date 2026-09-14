@@ -319,3 +319,39 @@ class TestBaseline:
             ],
         )
         assert result.exit_code >= 2
+
+
+class TestSeverityStyle:
+    def test_critical_is_not_green(self):
+        from aegisaudit.cli import _severity_style
+        from aegisaudit.models import Severity
+
+        assert _severity_style(Severity.CRITICAL) == "bold red"
+        assert _severity_style(Severity.HIGH) == "red"
+        assert _severity_style(Severity.INFO) == "dim"
+
+
+class TestExpandScanTargets:
+    def test_always_adds_security_txt_per_origin(self):
+        from aegisaudit.cli import expand_scan_targets
+
+        urls = expand_scan_targets(
+            ["https://example.com/app", "https://example.com/about"], probe=False
+        )
+        assert urls[0] == "https://example.com/app"
+        assert urls.count("https://example.com/.well-known/security.txt") == 1
+        assert not any(u.endswith("/.env") for u in urls)
+
+    def test_probe_adds_exposure_paths_once_per_origin(self):
+        from aegisaudit.cli import expand_scan_targets
+
+        urls = expand_scan_targets(["https://example.com/app"], probe=True)
+        assert "https://example.com/.env" in urls
+        assert "https://example.com/.git/HEAD" in urls
+        assert "https://example.com/.well-known/security.txt" in urls
+
+
+class TestScanBaselineFlags:
+    def test_update_baseline_without_path_is_usage_error(self):
+        result = runner.invoke(app, ["scan", "--url", "https://example.com", "--update-baseline"])
+        assert result.exit_code >= 2

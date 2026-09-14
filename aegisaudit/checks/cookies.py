@@ -78,6 +78,22 @@ def check_cookies(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
                     tags=["cookies"],
                 )
             )
+        elif samesite == "none" and not has_secure:
+            findings.append(
+                Finding(
+                    id="cookie-samesite-none-without-secure",
+                    severity=Severity.MEDIUM,
+                    title="SameSite=None Cookie Missing Secure",
+                    description=(
+                        f"Cookie '{name}' is SameSite=None without Secure; browsers reject "
+                        "or ignore this combination."
+                    ),
+                    evidence=name,
+                    url=artifact.url,
+                    remediation="Add the Secure attribute, or use SameSite=Lax/Strict.",
+                    tags=["cookies"],
+                )
+            )
 
     # Any cookie set over plain HTTP is exposed in transit regardless of flags.
     if artifact.url.startswith("http://") and artifact.cookies:

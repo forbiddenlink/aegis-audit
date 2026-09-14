@@ -9,13 +9,17 @@ reports.
 ## Features
 
 - **Web Scan (`scan`)** — passive checks against a live URL:
-  - **Headers**: HSTS, Content-Security-Policy, X-Content-Type-Options, and
-    information-disclosure headers (`Server`, `X-Powered-By`, ...).
+  - **Headers**: HSTS, Content-Security-Policy (including `unsafe-inline` /
+    `unsafe-eval` / wildcard quality), X-Content-Type-Options, Referrer-Policy,
+    clickjacking (`X-Frame-Options` or CSP `frame-ancestors`), and
+    Cross-Origin-Opener-Policy.
   - **HTTPS**: enforces HTTPS, detects mixed content.
   - **TLS**: certificate expiry and deprecated protocol versions.
-  - **DNS**: SPF, DMARC and CAA records.
-  - **Supply chain**: missing Subresource Integrity, outdated JS libraries.
+  - **DNS**: SPF, DMARC (`p=none` is not treated as protection), and CAA.
+  - **Supply chain**: missing Subresource Integrity on third-party scripts and
+    stylesheets, outdated JS libraries.
   - **Content**: passively detects PII (emails) and exposed secrets in HTML.
+  - **Disclosure**: always fetches `/.well-known/security.txt` (RFC 9116).
   - **Probing**: optionally checks for exposed `.env` / `.git` (`--probe`).
 
 - **Code Audit (`audit`)** — static analysis of a local directory:
@@ -52,6 +56,9 @@ aegis scan --url https://example.com --probe --format html
 
 # Scan every page listed in a sitemap (bounded by --max-urls)
 aegis scan --sitemap https://example.com/sitemap.xml --max-urls 100
+
+# Fail CI only on findings new since a recorded baseline
+aegis scan --url https://example.com --baseline .aegis-baseline.json --fail-on high
 
 # Send an alert to Discord
 aegis scan --url https://example.com --webhook "https://discord.com/api/webhooks/..."
@@ -105,6 +112,8 @@ aegis audit . --baseline .aegis-baseline.json --update-baseline
 # Later runs: pre-existing findings are suppressed; only new ones can fail CI
 aegis audit . --baseline .aegis-baseline.json --fail-on high
 ```
+
+`--baseline` / `--update-baseline` work on both `scan` and `audit`.
 
 The baseline stores only opaque fingerprints (a hash of each finding's rule,
 location, and description) — never the finding text or evidence, so a detected
@@ -166,9 +175,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - [Vision](docs/00-vision.md)
 - [Releasing](docs/RELEASING.md)
-
-> Note: `docs/05-cli-spec.md` and `docs/07-check-catalog.md` are
-> pre-implementation design documents. They describe some flags (`--sitemap`,
-> baseline diffing) and checks that are not yet built, and their scope does not
-> match the shipped CLI one-to-one. Treat `--help` and this README as
-> authoritative; use those docs for intent only.
+- [Check catalog](docs/07-check-catalog.md)
+- [CLI spec](docs/05-cli-spec.md)

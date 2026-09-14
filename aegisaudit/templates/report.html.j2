@@ -82,6 +82,16 @@
     <div class="container">
         <h1>🛡️ AegisAudit Security Report</h1>
         <p><strong>Target:</strong> {{ result.targets | join(', ') }} | <strong>Date:</strong> {{ result.started_at }}</p>
+        {% if result.failed_targets %}
+        <div class="finding-card" style="border-color: var(--high-color);">
+            <p><strong>Incomplete scan.</strong> These targets could not be fetched and were not assessed:</p>
+            <ul>
+            {% for url in result.failed_targets %}
+                <li><code>{{ url }}</code></li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
 
         <div class="score-card">
             <h2>Overall Score</h2>
@@ -140,6 +150,18 @@
             </div>
         </section>
 
+        {% if result.summary.category_scores %}
+        <section class="score-card">
+            <h2>Category Scores</h2>
+            <p style="color: #6c757d; font-size: 0.9em;">Per-category health for triage. Categories with no findings are omitted rather than scored 100.</p>
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 12px;">
+            {% for category, score in result.summary.category_scores.items() %}
+                <div><strong>{{ category }}</strong> {{ "%.0f"|format(score) }}</div>
+            {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
         <section>
             <h2>Detailed Findings</h2>
             {% if not result.findings %}
@@ -163,6 +185,14 @@
                     
                     {% if finding.remediation %}
                     <p><strong>Remediation:</strong> {{ finding.remediation }}</p>
+                    {% endif %}
+
+                    {% if finding.references %}
+                    <p><strong>References:</strong>
+                    {% for ref in finding.references %}
+                        <a href="{{ ref }}">{{ ref }}</a>{% if not loop.last %} · {% endif %}
+                    {% endfor %}
+                    </p>
                     {% endif %}
                 </div>
                 {% endfor %}

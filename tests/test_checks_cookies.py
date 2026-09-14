@@ -71,6 +71,19 @@ class TestHTTPContext:
         assert len(findings) == 0
 
 
+def test_samesite_none_without_secure_is_flagged(https_artifact, base_config):
+    https_artifact.set_cookie_headers = ["sid=abc; SameSite=None"]
+    ids = {f.id for f in check_cookies(https_artifact, base_config)}
+    assert "cookie-samesite-none-without-secure" in ids
+    assert "cookie-missing-samesite" not in ids
+
+
+def test_samesite_none_with_secure_is_clean_of_that_finding(https_artifact, base_config):
+    https_artifact.set_cookie_headers = ["sid=abc; Secure; HttpOnly; SameSite=None"]
+    ids = {f.id for f in check_cookies(https_artifact, base_config)}
+    assert "cookie-samesite-none-without-secure" not in ids
+
+
 class TestEdgeCases:
     """Tests for edge cases and malformed cookies."""
 
