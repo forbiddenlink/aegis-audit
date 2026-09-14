@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -324,7 +325,8 @@ class TestHTMLReport:
         generate_html_report(result, output_file)
         content = output_file.read_text()
         assert "Incomplete scan" in content
-        assert "https://down.test" in content
+        listed = re.findall(r"<li><code>([^<]*)</code></li>", content)
+        assert listed == list(result.failed_targets)
 
 
 class TestReportWithNoFindings:
