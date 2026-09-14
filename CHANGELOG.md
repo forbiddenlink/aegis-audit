@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **CSP quality checks** aligned with Mozilla HTTP Observatory: `'unsafe-inline'`
+  and `'unsafe-eval'` in script-src, overly broad script/object sources (`*`,
+  `https:`), and missing `base-uri`. A nonce/hash on script-src still suppresses
+  `'unsafe-inline'`, matching browser behaviour.
+- **Clickjacking protection**: missing both `X-Frame-Options` and CSP
+  `frame-ancestors` is a finding; either one is enough. Obsolete `ALLOW-FROM`
+  is flagged.
+- **COOP** presence reported as info (Observatory extra-credit, not a score hit).
+- **DMARC `p=none`**: a monitor-only policy is no longer treated as protection.
+- **SRI for stylesheets**, and same-origin scripts/styles are no longer flagged.
+- **`scan --baseline` / `--update-baseline`**, matching `audit`.
+- RFC 9116 `/.well-known/security.txt` is fetched on every scan, not only with
+  `--probe`.
+- Slack/Discord alerts include the critical count (they previously dropped it).
+- Example config is a loadable YAML file matching `AegisConfig`.
 - **Sitemap discovery** (`scan --sitemap URL`, `--max-urls`): expand a sitemap
   into scan targets, following one bounded level of sitemap-index nesting. The
   sitemap is fetched through the SSRF guard and parsed with defusedxml so a
@@ -22,6 +37,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   permissive defaults.
 - Test coverage for the CI gate, scan-history store, Notion sink, alert
   webhooks, and the scan orchestrator.
+
+### Fixed
+
+- CRITICAL findings rendered in green in the CLI table (fallthrough after HIGH/
+  MEDIUM/LOW). They now use bold red, same as the HTML report.
+- Weak Referrer-Policy values (`unsafe-url`, `no-referrer-when-downgrade`) are
+  reported instead of counting as present-and-fine.
+- `SameSite=None` cookies without `Secure` are reported.
 
 ### Security
 

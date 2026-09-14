@@ -1,50 +1,59 @@
-# Check Catalog (MVP)
+# Check Catalog
+
+Checks implemented by `aegis scan`. Severity is the default; policy can
+tighten HSTS/CSP presence but not currently retune quality findings.
+
+Inspired by [Mozilla HTTP Observatory](https://developer.mozilla.org/en-US/observatory/docs/tests_and_scoring)
+and the [OWASP Secure Headers Project](https://owasp.org/www-project-secure-headers/).
 
 ## Headers
 
-- **HSTS**: Present, max-age >= 6 months, includeSubDomains.
-- **CSP**: Present, no parsing errors.
-- **Referrer-Policy**: Present, secure value (e.g., `strict-origin-when-cross-origin`).
+- **HSTS**: Present, `max-age` >= 180 days, `includeSubDomains`.
+- **CSP presence**: header is set.
+- **CSP quality** (when present):
+  - `'unsafe-inline'` in `script-src` / `default-src` (nonce/hash exception)
+  - `'unsafe-eval'` in `script-src` / `default-src`
+  - overly broad `script-src` or `object-src` (`*`, `https:`, `http:`, `data:`)
+  - missing `base-uri`
+- **Referrer-Policy**: Present; `unsafe-url` and `no-referrer-when-downgrade` are weak.
 - **Permissions-Policy**: Present.
+- **Clickjacking**: `X-Frame-Options` (`DENY` / `SAMEORIGIN`) **or** CSP
+  `frame-ancestors`. Either is enough. `ALLOW-FROM` is invalid.
 - **X-Content-Type-Options**: `nosniff`.
-- **Cross-Origin-Opener-Policy (COOP)**: Present (optional/warn for MVP).
-- **Cross-Origin-Embedder-Policy (COEP)**: Present (optional/warn for MVP).
-- **Cross-Origin-Resource-Policy (CORP)**: Present (optional/warn for MVP).
+- **Cross-Origin-Opener-Policy (COOP)**: Present (info; does not deduct score).
 
 ## Cookies
 
 - **Secure**: Present if HTTPS.
-- **HttpOnly**: Present (context dependent).
-- **SameSite**: Present (`Lax` or `Strict`).
+- **HttpOnly**: Present.
+- **SameSite**: Present (`Lax`, `Strict`, or `None`).
+- **SameSite=None** requires **Secure**.
 
 ## HTTPS Hygiene
 
-- **Redirects**: http:// -> https://.
-- **Final URL**: Must be https://.
-- **Mixed Content**: No `http://` resources in HTML (img, script, link).
-- **Certificate**: Not expired (passive check).
+- **Final URL**: Must be `https://`.
+- **Mixed Content**: No `http://` resources in HTML (`img`, `script`, `link`, `iframe`).
+- **Certificate**: Not expired; warn if expiring soon (TLS check).
 
 ## RFC 9116 (security.txt)
 
-- **Presence**: Check `/.well-known/security.txt`.
-- **Validity**: Check `Expires` field is present and in future.
-- **Contact**: Check `Contact` field is present.
-- **Protocol**: Must be served over HTTPS.
+Fetched automatically at `/.well-known/security.txt` for each origin.
+
+- **Presence**: 4xx/5xx is reported as missing.
+- **Contact**: mandatory field.
+- **Expires**: field is present.
 
 ## Supply Chain (SRI)
 
-- **Integrity**: External `<script>` and `<link>` tags must have `integrity` attribute.
-- **Cross-Origin**: Usage of `crossorigin="anonymous"` with integrity.
+- **Integrity**: Third-party `<script src>` and `<link rel="stylesheet">` must
+  have an `integrity` attribute. Same-origin and relative URLs are out of scope.
 
-## CSP Quality (Basic/Regex)
+## DNS / email
 
-- Warning on `unsafe-inline` / `unsafe-eval`.
-- Warning on `*` in usage.
-- Missing `object-src` or `base-uri`.
-- Missing `frame-ancestors` (if no XFO).
+- **SPF**: Present; `+all` is high.
+- **DMARC**: Present; `p=none` is medium (monitor-only, not protection).
+- **CAA**: Present (low).
 
 ## Info Leakage
 
-- **Server Header**: Present (warn).
-- **X-Powered-By**: Present (warn).
-- **Debug Headers**: Warnings for `X-Asp*` or similar.
+- **Server**, **X-Powered-By**, **X-AspNet-Version**: present (info).

@@ -90,9 +90,32 @@ def test_send_webhook_discord_payload(monkeypatch):
     embed = captured["json"]["embeds"][0]
     assert embed["color"] == 0xFF0000  # red for a failing score
     assert "55.0" in embed["title"]
+    field_names = {field["name"] for field in embed["fields"]}
+    assert "Critical" in field_names
+    assert "High" in field_names
 
 
-def test_send_webhook_slack_payload(monkeypatch):
+def test_send_webhook_slack_payload_includes_critical(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        httpx, "post", lambda url, json=None, timeout=None: captured.update(url=url, json=json)
+    )
+    result = _result(score=95.0)
+    result.summary.counts_by_severity = {
+        "critical": 1,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0,
+    }
+    url = "https://hooks.slack.com/services/T/B/x"
+    send_webhook(url, result)
+
+    assert "*Critical*: 1" in captured["json"]["text"]
+    assert "rotating_light" in captured["json"]["text"]
+
+
+def test_send_webhook_slack_payload_passing_score(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         httpx, "post", lambda url, json=None, timeout=None: captured.update(url=url, json=json)
@@ -102,7 +125,7 @@ def test_send_webhook_slack_payload(monkeypatch):
 
     assert captured["url"] == url
     assert "text" in captured["json"]
-    assert "white_check_mark" in captured["json"]["text"]  # green for a passing score
+    assert "white_check_mark" in captured["json"]["text"]
 
 
 def test_send_webhook_swallows_transport_error(monkeypatch):

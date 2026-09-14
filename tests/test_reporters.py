@@ -312,6 +312,20 @@ class TestHTMLReport:
         # A CSS rule for the critical badge exists.
         assert ".critical {" in content or ".critical{" in content
 
+    def test_html_report_lists_failed_targets(self, tmp_path):
+        result = ScanResult(
+            tool_version="0.1.0",
+            targets=["https://up.test", "https://down.test"],
+            failed_targets=["https://down.test"],
+            findings=[],
+            summary=ScanSummary(counts_by_severity={}, overall_score=100.0),
+        )
+        output_file = tmp_path / "report.html"
+        generate_html_report(result, output_file)
+        content = output_file.read_text()
+        assert "Incomplete scan" in content
+        assert "https://down.test" in content
+
 
 class TestReportWithNoFindings:
     """Tests for reports with clean scan results."""

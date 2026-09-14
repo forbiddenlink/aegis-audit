@@ -61,10 +61,52 @@ def check_dns(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
                 )
             )
 
-        # DMARC Check
+        # DMARC Check. Presence alone is not protection: p=none is monitor-only
+        # (Mozilla Observatory / DMARC spec) and still lets spoofed mail through.
         try:
             dmarc_domain = f"_dmarc.{domain}"
-            dns.resolver.resolve(dmarc_domain, "TXT")
+            dmarc_answers = dns.resolver.resolve(dmarc_domain, "TXT")
+            dmarc_txt = None
+            for record in dmarc_answers:
+                txt = record.to_text().strip('"')
+                if txt.lower().startswith("v=dmarc1"):
+                    dmarc_txt = txt
+                    break
+            if dmarc_txt is None:
+                findings.append(
+                    Finding(
+                        id="missing-dmarc",
+                        severity=Severity.MEDIUM,
+                        title="Missing DMARC Record",
+                        description="DMARC record is missing at _dmarc subdomain.",
+                        url=artifact.url,
+                        remediation="Configure DMARC to enforce SPF/DKIM policies.",
+                        tags=["dns", "email"],
+                    )
+                )
+            else:
+                policy_tag = None
+                for part in dmarc_txt.split(";"):
+                    part = part.strip().lower()
+                    if part.startswith("p="):
+                        policy_tag = part.split("=", 1)[1].strip()
+                        break
+                if policy_tag == "none":
+                    findings.append(
+                        Finding(
+                            id="dmarc-policy-none",
+                            severity=Severity.MEDIUM,
+                            title="DMARC Policy Is none",
+                            description=(
+                                "DMARC is published with p=none, which only monitors. "
+                                "Spoofed mail is still delivered."
+                            ),
+                            evidence=dmarc_txt,
+                            url=artifact.url,
+                            remediation="Raise the policy to p=quarantine or p=reject once reports look clean.",
+                            tags=["dns", "email"],
+                        )
+                    )
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
             findings.append(
                 Finding(

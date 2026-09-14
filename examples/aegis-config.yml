@@ -1,0 +1,42 @@
+# Example AegisAudit configuration (YAML).
+# Use with: aegis scan --config examples/aegis-config.yml --url https://example.com
+#
+# Unknown keys are rejected. The loader is YAML-only; this file matches
+# AegisConfig in aegisaudit/config.py.
+
+scope:
+  # Hostname allowlist. Empty means any public host. Private/loopback/metadata
+  # destinations are still blocked unless allow_private is true.
+  allow: []
+  allow_private: false
+
+targets:
+  urls: []
+  urls_file: null
+  sitemap: null
+
+limits:
+  rate_per_sec: 2.0
+  timeout_sec: 10.0
+  max_html_bytes: 200000
+  max_concurrency: 10
+  insecure: false
+  max_redirects: 5
+
+policy:
+  required_headers:
+    strict-transport-security:
+      min_max_age: 15552000  # 180 days
+      include_subdomains: true
+    content-security-policy:
+      required: true
+    x-content-type-options:
+      value: nosniff
+    referrer-policy:
+      required: true
+    permissions-policy:
+      required: true
+  banned_headers:
+    - server
+    - x-powered-by
+    - x-aspnet-version

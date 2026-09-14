@@ -41,8 +41,11 @@ def send_webhook(url: str, result: ScanResult) -> None:
         return
 
     score = result.summary.overall_score
+    counts = result.summary.counts_by_severity
+    critical = counts.get(Severity.CRITICAL, 0)
+    high = counts.get(Severity.HIGH, 0)
     color = 0x00FF00  # Green
-    if score < 70:
+    if score < 70 or critical:
         color = 0xFF0000  # Red
     elif score < 90:
         color = 0xFFFF00  # Yellow
@@ -57,10 +60,8 @@ def send_webhook(url: str, result: ScanResult) -> None:
                     "color": color,
                     "fields": [
                         {"name": "Targets", "value": ", ".join(result.targets)[:100]},
-                        {
-                            "name": "High Severity",
-                            "value": str(result.summary.counts_by_severity[Severity.HIGH]),
-                        },
+                        {"name": "Critical", "value": str(critical)},
+                        {"name": "High", "value": str(high)},
                         {"name": "Total Issues", "value": str(len(result.findings))},
                     ],
                     "footer": {"text": f"AegisAudit v{result.tool_version}"},
@@ -70,13 +71,18 @@ def send_webhook(url: str, result: ScanResult) -> None:
     else:
         # Slack format (simplified)
         emoji = "white_check_mark"
-        if score < 70:
+        if score < 70 or critical:
             emoji = "rotating_light"
         elif score < 90:
             emoji = "warning"
 
         payload = {
-            "text": f":{emoji}: *AegisAudit Scan Complete*\n*Score*: {score:.1f}/100\n*Targets*: {', '.join(result.targets)}\n*High Issues*: {result.summary.counts_by_severity[Severity.HIGH]}"
+            "text": (
+                f":{emoji}: *AegisAudit Scan Complete*\n"
+                f"*Score*: {score:.1f}/100\n"
+                f"*Targets*: {', '.join(result.targets)}\n"
+                f"*Critical*: {critical}  *High*: {high}"
+            )
         }
 
     try:
