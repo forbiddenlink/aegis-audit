@@ -92,3 +92,6 @@ aegis-audit/
 *.resolved
 *.resolved.[0-9]
 *.metadata.json
+
+# Agent scratch cache
+.claude/tsc-cache/
