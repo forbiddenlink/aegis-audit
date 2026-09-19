@@ -47,6 +47,21 @@ Fetched automatically at `/.well-known/security.txt` for each origin.
 
 - **Integrity**: Third-party `<script src>` and `<link rel="stylesheet">` must
   have an `integrity` attribute. Same-origin and relative URLs are out of scope.
+- **Outdated libraries** (medium): passive version-signature detection for
+  jQuery, Bootstrap, and AngularJS against a per-library known-safe floor
+  (e.g. jQuery < 3.5.0 for CVE-2020-11022/11023).
+- **Exposed source maps** (info): a `sourceMappingURL=` reference in
+  production JavaScript.
+
+## Content
+
+- **PII / secrets in HTML** (varies): passive regex scan of the response body
+  for emails and common credential patterns (AWS keys, Slack tokens, etc.).
+
+## Exposure probing (`--probe`, opt-in)
+
+- **`.env` exposed**: the file is reachable and returns 200.
+- **`.git` exposed**: `.git/HEAD` is reachable and returns 200.
 
 ## DNS / email
 

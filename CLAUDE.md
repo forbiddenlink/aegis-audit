@@ -44,8 +44,8 @@ Docker: `docker build -t aegis . && docker run --rm aegis scan --url https://exa
   /`--fail-under` gating, SQLite scan history, SSRF-safe fetching, sitemap crawling
 - `tests/` - one test file per module, `tests/test_sarif.py` validates output against
   the official SARIF 2.1.0 schema
-- `docs/` - numbered design docs (vision, architecture, data model, CLI spec, check
-  catalog, roadmap); `docs/RELEASING.md` for the release process
+- `docs/` - numbered design docs (vision, CLI spec, config policy, check catalog,
+  roadmap); `docs/RELEASING.md` for the release process
 
 ## Scoring model
 
