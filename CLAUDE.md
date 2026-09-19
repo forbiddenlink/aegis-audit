@@ -56,9 +56,12 @@ and are not averaged into the overall score.
 
 ## Config
 
-No environment variables are read; the Notion token and Slack/Discord webhook URL are
-passed as CLI flags, not env vars. `.aegisignore` (glob-per-line, `#` comments, trailing
-`/` for a subtree) suppresses findings in a scan root, same syntax as `.gitignore`.
+Notion (`NOTION_TOKEN`, `AEGIS_NOTION_DB_ID`) and Telegram (`AEGIS_TELEGRAM_TOKEN`,
+`AEGIS_TELEGRAM_CHAT_ID`) credentials can be passed as CLI flags or read from those env
+vars (Typer `envvar=` fallback); the Slack/Discord webhook URL is CLI-flag only
+(`--webhook`), not env-configurable. `.aegisignore` (glob-per-line, `#` comments,
+trailing `/` for a subtree) suppresses findings in a scan root, same syntax as
+`.gitignore`.
 
 ## Gotchas
 
