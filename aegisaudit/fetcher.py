@@ -6,7 +6,7 @@ import httpx
 
 from aegisaudit.config import AegisConfig
 from aegisaudit.models import ScanArtifact, _tool_version
-from aegisaudit.ssrf import SSRFError, validate_url
+from aegisaudit.ssrf import PinnedTransport, SSRFError, validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,21 @@ class Fetcher:
         # every hop can be re-validated by the SSRF guard. Letting httpx follow
         # them automatically would jump to an internal/metadata host with no
         # check. verify defaults on (see LimitsConfig.insecure).
+        #
+        # The transport pins the connection to the IP the SSRF guard validated
+        # (see ssrf.PinnedNetworkBackend), so a DNS record that changes between
+        # validation and connect cannot redirect the request inward. TLS still
+        # verifies against the hostname; `insecure` only disables cert checks.
+        limits = httpx.Limits(max_keepalive_connections=10, max_connections=10)
         self.client = httpx.AsyncClient(
-            verify=not config.limits.insecure,
+            transport=PinnedTransport(
+                verify=not config.limits.insecure,
+                allow_private=config.scope.allow_private,
+                limits=limits,
+            ),
             follow_redirects=False,
             timeout=config.limits.timeout_sec,
             headers={"User-Agent": DEFAULT_USER_AGENT},
-            limits=httpx.Limits(max_keepalive_connections=10, max_connections=10),
         )
         # Concurrency budget, always at least 1 so the fetcher can never block
         # on an empty semaphore.

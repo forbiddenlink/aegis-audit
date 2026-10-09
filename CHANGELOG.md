@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **SSRF: DNS-rebinding TOCTOU closed.** The fetcher now connects to the exact IP the
+  SSRF guard validated (resolved and checked at connect time in a pinned httpcore
+  network backend) instead of letting the client re-resolve the hostname. SNI,
+  certificate hostname verification and the Host header still use the original
+  hostname. Requests sent through an `HTTP(S)_PROXY` are resolved by the proxy and
+  are still covered only by the pre-connect URL check.
+
 ### Added
 
 - **CSP quality checks** aligned with Mozilla HTTP Observatory: `'unsafe-inline'`
