@@ -17,6 +17,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **CORS check**: an anonymous `GET` per scan target with `Origin: https://example.invalid`
+  (no credentials, redirects not followed). A reflected origin is high with
+  `Access-Control-Allow-Credentials: true` and medium without; `*` is info, or low
+  when combined with credentials (browsers reject that pair). A probe that fails is
+  recorded in `failed_targets`, not treated as a pass.
 - **CSP quality checks** aligned with Mozilla HTTP Observatory: `'unsafe-inline'`
   and `'unsafe-eval'` in script-src, overly broad script/object sources (`*`,
   `https:`), and missing `base-uri`. A nonce/hash on script-src still suppresses

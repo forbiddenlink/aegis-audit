@@ -12,10 +12,11 @@ from rich.console import Console
 from rich.table import Table
 
 from aegisaudit.models import _tool_version
+from aegisaudit.checks.cors import CORS_PROBE_ORIGIN
 from aegisaudit.config import load_config, AegisConfig
 from aegisaudit.fetcher import Fetcher
 from aegisaudit.gating import gate_failure_reason, parse_formats, parse_severity
-from aegisaudit.models import Finding, ScanResult, Severity
+from aegisaudit.models import Finding, ScanArtifact, ScanResult, Severity
 from aegisaudit.runner import Runner
 from aegisaudit.reporters import (
     generate_html_report,
@@ -268,28 +269,36 @@ async def run_scan(
     webhook: Optional[str] = None,
     baseline: Optional[Path] = None,
     update_baseline: bool = False,
+    cors_targets: Optional[List[str]] = None,
 ) -> Optional[ScanResult]:
     console.print(f"[bold green]Starting scan against {len(urls)} targets...[/bold green]")
     fetcher = Fetcher(config)
 
+    probe_artifacts: List[ScanArtifact] = []
+    probe_failures: List[str] = []
     try:
         artifacts = await fetcher.fetch_many(urls)
+        if cors_targets:
+            probe_artifacts, probe_failures = await fetcher.probe_cors(
+                cors_targets, CORS_PROBE_ORIGIN
+            )
     finally:
         await fetcher.close()
 
     for artifact in artifacts:
         console.print(f"  [green]✓[/green] {artifact.status_code} {artifact.final_url}")
     fetched_urls = {a.url for a in artifacts}
-    failed_targets = [u for u in urls if u not in fetched_urls]
+    failed_targets = [u for u in urls if u not in fetched_urls] + probe_failures
     if failed_targets:
         console.print(
-            f"  [red]✗[/red] {len(failed_targets)} of {len(urls)} target(s) failed to fetch"
+            f"  [red]✗[/red] {len(failed_targets)} of {len(urls) + len(cors_targets or [])} "
+            "request(s) failed"
         )
 
     if artifacts:
         console.print(f"\n[bold]Running checks on {len(artifacts)} artifacts...[/bold]")
         runner = Runner(config)
-        result = runner.run_checks(artifacts)
+        result = runner.run_checks(artifacts + probe_artifacts)
         # Record what never got assessed so an incomplete scan can't read as a
         # clean one in the report or the gate.
         result.failed_targets = failed_targets
@@ -499,6 +508,9 @@ def scan(
         raise typer.Exit(code=EXIT_USAGE_ERROR)
 
     n_user = len(target_urls)
+    # Only the targets the user named (and a sitemap listed) get an Origin
+    # probe, not the generated security.txt / exposure paths.
+    cors_targets = list(dict.fromkeys(target_urls))
     target_urls = expand_scan_targets(target_urls, probe=probe)
     extra = len(target_urls) - n_user
     if probe:
@@ -520,6 +532,7 @@ def scan(
             webhook=webhook,
             baseline=baseline,
             update_baseline=update_baseline,
+            cors_targets=cors_targets,
         )
     )
 

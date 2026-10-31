@@ -16,6 +16,7 @@ from aegisaudit.checks.javascript import check_javascript
 from aegisaudit.checks.tls import check_tls
 from aegisaudit.checks.secrets import check_secrets
 from aegisaudit.checks.exposure import check_exposure
+from aegisaudit.checks.cors import check_cors
 
 CHECK_MODULES: List[Callable[[ScanArtifact, AegisConfig], List[Finding]]] = [
     check_headers,
@@ -28,6 +29,13 @@ CHECK_MODULES: List[Callable[[ScanArtifact, AegisConfig], List[Finding]]] = [
     check_tls,
     check_secrets,
     check_exposure,
+]
+
+# Checks that read an Origin-probe artifact (ScanArtifact.request_origin set).
+# Kept apart from CHECK_MODULES so a probe response, which duplicates a page
+# already fetched, is not re-run through DNS, TLS and the content checks.
+PROBE_CHECK_MODULES: List[Callable[[ScanArtifact, AegisConfig], List[Finding]]] = [
+    check_cors,
 ]
 
 # Deterministic ordering for findings collected out of order by the thread pool.
@@ -75,7 +83,8 @@ class Runner:
 
     def _check_artifact(self, artifact: ScanArtifact) -> List[Finding]:
         findings: List[Finding] = []
-        for check_func in CHECK_MODULES:
+        modules = PROBE_CHECK_MODULES if artifact.request_origin else CHECK_MODULES
+        for check_func in modules:
             findings.extend(check_func(artifact, self.config))
         return findings
 
@@ -102,7 +111,7 @@ class Runner:
         summary = calculate_score(all_findings)
 
         return ScanResult(
-            targets=[a.url for a in artifacts],
+            targets=list(dict.fromkeys(a.url for a in artifacts)),
             findings=all_findings,
             summary=summary,
             config_snapshot=self.config.model_dump(mode="json"),

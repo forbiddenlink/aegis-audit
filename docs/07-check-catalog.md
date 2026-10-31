@@ -29,6 +29,21 @@ and the [OWASP Secure Headers Project](https://owasp.org/www-project-secure-head
 - **SameSite**: Present (`Lax`, `Strict`, or `None`).
 - **SameSite=None** requires **Secure**.
 
+## CORS
+
+One anonymous `GET` per scan target with `Origin: https://example.invalid`. No
+cookies or other credentials are sent and redirects are not followed.
+
+- **Reflected origin + `Access-Control-Allow-Credentials: true`** (high): any site
+  can make credentialed requests and read the response.
+- **Reflected origin, no credentials** (medium).
+- **`*` + credentials `true`** (low): browsers reject this combination, so it is a
+  misconfiguration, not an exploitable hole.
+- **`*`, no credentials** (info): valid for public resources.
+- **No `Access-Control-Allow-Origin`**: pass (no finding).
+- A probe that cannot complete is listed in `failed_targets` as
+  `<url> (CORS probe)`, never counted as a pass.
+
 ## HTTPS Hygiene
 
 - **Final URL**: Must be `https://`.

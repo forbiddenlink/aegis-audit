@@ -3,7 +3,7 @@
 Phase 1 (MVP) - shipped:
 
 - CLI + config + allowlist enforcement (`ssrf.py`)
-- fetcher + checks (headers, HTTPS, TLS, DNS, cookies, SRI, security.txt,
+- fetcher + checks (headers, HTTPS, TLS, DNS, cookies, CORS, SRI, security.txt,
   JavaScript, exposure probing, secrets)
 - JSON + HTML report
 - tests for checks
