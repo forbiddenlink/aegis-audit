@@ -355,3 +355,34 @@ class TestScanBaselineFlags:
     def test_update_baseline_without_path_is_usage_error(self):
         result = runner.invoke(app, ["scan", "--url", "https://example.com", "--update-baseline"])
         assert result.exit_code >= 2
+
+
+class TestScanIncompleteGate:
+    """An incomplete scan (failed_targets) must not pass a configured gate."""
+
+    def _invoke(self, monkeypatch, tmp_path, *extra):
+        import aegisaudit.cli as cli_mod
+        from aegisaudit.models import ScanResult
+
+        async def fake_run_scan(*args, **kwargs):
+            return ScanResult(
+                targets=["https://example.com/"],
+                failed_targets=["https://example.com/ (CORS probe)"],
+            )
+
+        monkeypatch.setattr(cli_mod, "run_scan", fake_run_scan)
+        return runner.invoke(
+            app,
+            ["scan", "--url", "https://example.com/", "--out", str(tmp_path / "o"), *extra],
+        )
+
+    def test_exits_1_with_fail_on(self, monkeypatch, tmp_path):
+        result = self._invoke(monkeypatch, tmp_path, "--fail-on", "high")
+        assert result.exit_code == 1
+        assert "scan is incomplete" in result.output
+
+    def test_exits_1_with_fail_under(self, monkeypatch, tmp_path):
+        assert self._invoke(monkeypatch, tmp_path, "--fail-under", "50").exit_code == 1
+
+    def test_exits_0_without_a_gate(self, monkeypatch, tmp_path):
+        assert self._invoke(monkeypatch, tmp_path).exit_code == 0

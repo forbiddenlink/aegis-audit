@@ -64,12 +64,17 @@ def dedupe_findings(findings: List[Finding]) -> List[Finding]:
     description. The description keeps genuinely distinct findings apart: two
     external scripts each missing SRI differ in their described src, and two
     different sites missing HSTS differ in their host, so both are preserved.
+
+    CORS findings are the exception: they describe one URL's response, so their
+    text is identical across URLs and each URL needs its own fix. They are keyed
+    on the full URL, matching baseline.fingerprint, which already treats the URL
+    as part of a finding's identity.
     """
     seen: Set[Tuple[str, str, str]] = set()
     result: List[Finding] = []
     for finding in findings:
-        host = urlparse(finding.url).netloc
-        key = (finding.id, host, finding.description)
+        where = finding.url if "cors" in finding.tags else urlparse(finding.url).netloc
+        key = (finding.id, where, finding.description)
         if key in seen:
             continue
         seen.add(key)

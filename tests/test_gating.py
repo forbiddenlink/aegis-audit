@@ -99,3 +99,31 @@ def test_gate_fail_under_trips_and_boundary_is_exclusive():
     assert gate_failure_reason(_result(score=79.9), fail_under=80.0) is not None
     # exactly at the floor passes (strictly-below fails)
     assert gate_failure_reason(_result(score=80.0), fail_under=80.0) is None
+
+
+# --- incomplete scans -----------------------------------------------------
+
+
+def _incomplete(score: float = 100.0) -> ScanResult:
+    result = _result(score=score)
+    result.failed_targets = ["https://x.test/ (CORS probe)"]
+    return result
+
+
+def test_incomplete_scan_fails_a_fail_on_gate():
+    reason = gate_failure_reason(_incomplete(), fail_on=Severity.HIGH)
+    assert reason is not None
+    assert "not assessed" in reason and "https://x.test/ (CORS probe)" in reason
+
+
+def test_incomplete_scan_fails_a_fail_under_gate():
+    reason = gate_failure_reason(_incomplete(score=100.0), fail_under=80.0)
+    assert reason is not None and "not assessed" in reason
+
+
+def test_incomplete_scan_without_a_gate_is_unchanged():
+    assert gate_failure_reason(_incomplete()) is None
+
+
+def test_complete_scan_below_gate_is_unchanged():
+    assert gate_failure_reason(_result([Severity.LOW]), fail_on=Severity.HIGH) is None

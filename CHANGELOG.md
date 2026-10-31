@@ -18,7 +18,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **CORS check**: an anonymous `GET` per scan target with `Origin: https://example.invalid`
-  (no credentials, redirects not followed). A reflected origin is high with
+  (no credentials; redirects are followed, see Fixed). A reflected origin is high with
   `Access-Control-Allow-Credentials: true` and medium without; `*` is info, or low
   when combined with credentials (browsers reject that pair). A probe that fails is
   recorded in `failed_targets`, not treated as a pass.
@@ -54,6 +54,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **CORS probe follows redirects.** A target that redirects (for example apex to www)
+  returned a 3xx with no CORS headers and so read as a pass. The probe now follows
+  redirects through the same hop loop as page fetches (SSRF guard on every hop, `Origin`
+  re-sent and cookies stripped on every hop) and classifies the final response. A
+  redirect loop, a redirect without `Location`, or a hop to a blocked host is recorded
+  in `failed_targets` as `<url> (CORS probe)`.
+- **CORS findings are kept per URL.** Two reflecting paths on one host were collapsed
+  into one finding by host-level de-duplication, hiding the second URL from the report
+  and from baselines.
+- **Incomplete scans fail a configured gate.** With `--fail-on` or `--fail-under` set, a
+  scan with any entry in `failed_targets` now exits 1 with the unassessed targets named,
+  instead of passing on the findings that were collected. Behaviour is unchanged when
+  neither option is set. This changes exit codes for existing CI users whose scans had
+  unreachable targets.
 - CRITICAL findings rendered in green in the CLI table (fallthrough after HIGH/
   MEDIUM/LOW). They now use bold red, same as the HTML report.
 - Weak Referrer-Policy values (`unsafe-url`, `no-referrer-when-downgrade`) are

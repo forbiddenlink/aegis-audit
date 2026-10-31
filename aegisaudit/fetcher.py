@@ -93,38 +93,43 @@ class Fetcher:
             allow_private=self.config.scope.allow_private,
         )
 
-    async def _get(self, url: str) -> httpx.Response:
+    async def _get(self, url: str, origin: Optional[str] = None) -> httpx.Response:
         """Validate the destination and every redirect hop, returning the final
         response.
 
         Redirects are followed manually so each hop is re-validated by the SSRF
         guard. An attacker's target can 3xx to an internal/metadata host;
         auto-following would leak its body into reports and outbound webhooks.
+
+        With `origin`, every hop is an anonymous cross-origin probe: the Origin
+        header is re-sent and the Cookie header stripped on each request. The
+        client shares a cookie jar and httpx merges it into every request it
+        builds, so a Set-Cookie on one hop would otherwise be presented on the
+        next. The final response is the one the caller classifies, so a site
+        that redirects (apex to www) is not mistaken for one with no CORS
+        headers.
         """
         self._validate(url)
         current = url
-        response = await self.client.get(current)
+        response = await self._send(current, origin)
         hops = 0
         while response.is_redirect:
             if hops >= self.config.limits.max_redirects:
                 raise SSRFError(f"too many redirects (>{self.config.limits.max_redirects})")
             location = response.headers.get("location", "")
+            if origin is not None and not location:
+                # A probe that cannot reach a final response is a failure, not
+                # a response without CORS headers.
+                raise SSRFError(f"redirect without Location from {current}")
             current = str(response.url.join(location))
             self._validate(current)
             hops += 1
-            response = await self.client.get(current)
+            response = await self._send(current, origin)
         return response
 
-    async def _get_origin_probe(self, url: str, origin: str) -> httpx.Response:
-        """One anonymous GET carrying an Origin header, redirects NOT followed.
-
-        The client shares a cookie jar across requests, and httpx merges it into
-        every request it builds, so the Cookie header is stripped: the probe
-        must never present credentials. A redirect is not followed because it
-        usually leads into login or account pages, and the CORS answer of
-        interest is the one from the URL the user asked about.
-        """
-        self._validate(url)
+    async def _send(self, url: str, origin: Optional[str]) -> httpx.Response:
+        if origin is None:
+            return await self.client.get(url)
         request = self.client.build_request("GET", url, headers={"Origin": origin})
         request.headers.pop("cookie", None)
         return await self.client.send(request, follow_redirects=False)
@@ -134,11 +139,7 @@ class Fetcher:
         await self._respect_rate_limit()
         async with self.semaphore:
             try:
-                response = (
-                    await self._get(url)
-                    if origin is None
-                    else await self._get_origin_probe(url, origin)
-                )
+                response = await self._get(url, origin)
 
                 # Truncate body if needed
                 body_content = response.text

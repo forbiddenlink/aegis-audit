@@ -196,14 +196,22 @@ class TestProbeRequest:
         assert "cookie" not in probe.headers
         assert "authorization" not in probe.headers
 
-    def test_probe_does_not_follow_redirects(self):
-        seen: List[str] = []
+    def test_probe_follows_redirect_and_classifies_the_final_response(self):
+        """Apex -> www used to return the 3xx (no CORS headers) = a silent pass."""
+        seen: List[httpx.Request] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            seen.append(str(request.url))
-            if request.url.path == "/":
-                return httpx.Response(302, headers={"location": "https://example.com/account"})
-            return httpx.Response(200, text="private")
+            seen.append(request)
+            if request.url.host == "example.com":
+                return httpx.Response(
+                    301,
+                    headers={
+                        "location": "https://www.example.com/",
+                        "set-cookie": "sid=abc; Path=/",
+                    },
+                )
+            origin = request.headers.get("origin", "")
+            return httpx.Response(200, text="ok", headers={"access-control-allow-origin": origin})
 
         async def run():
             fetcher = _fetcher(handler)
@@ -213,8 +221,75 @@ class TestProbeRequest:
                 await fetcher.close()
 
         artifact = asyncio.run(run())
+        assert [str(r.url) for r in seen] == ["https://example.com/", "https://www.example.com/"]
+        # Origin re-sent and no cookie presented on every hop, even though hop 1
+        # set one into the shared jar.
+        assert all(r.headers["origin"] == CORS_PROBE_ORIGIN for r in seen)
+        assert all("cookie" not in r.headers for r in seen)
+        assert artifact is not None
+        assert artifact.status_code == 200
+        assert artifact.url == "https://example.com/"
+        assert artifact.final_url == "https://www.example.com/"
+        findings = check_cors(artifact, CFG)
+        assert [f.id for f in findings] == ["cors-reflected-origin"]
+        assert findings[0].url == "https://example.com/"
+        assert findings[0].evidence.endswith(
+            "; response from https://www.example.com/ after redirect"
+        )
+
+    def test_probe_redirect_to_internal_host_is_a_failure(self, monkeypatch):
+        def resolve(host, port, **_kwargs):
+            ip = "10.0.0.5" if host == "internal.example.com" else "93.184.216.34"
+            return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (ip, port))]
+
+        monkeypatch.setattr("aegisaudit.ssrf.socket.getaddrinfo", resolve)
+        seen: List[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return httpx.Response(302, headers={"location": "http://internal.example.com/latest"})
+
+        async def run():
+            fetcher = _fetcher(handler)
+            try:
+                return await fetcher.probe_cors(["https://example.com/"], CORS_PROBE_ORIGIN)
+            finally:
+                await fetcher.close()
+
+        artifacts, failed = asyncio.run(run())
         assert seen == ["https://example.com/"]
-        assert artifact is not None and artifact.status_code == 302
+        assert artifacts == []
+        assert failed == ["https://example.com/ (CORS probe)"]
+
+    def test_probe_redirect_loop_is_a_failure(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(302, headers={"location": "https://example.com/again"})
+
+        async def run():
+            fetcher = _fetcher(handler)
+            try:
+                return await fetcher.probe_cors(["https://example.com/"], CORS_PROBE_ORIGIN)
+            finally:
+                await fetcher.close()
+
+        artifacts, failed = asyncio.run(run())
+        assert artifacts == []
+        assert failed == ["https://example.com/ (CORS probe)"]
+
+    def test_redirect_without_location_is_a_failure_not_a_pass(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(302)
+
+        async def run():
+            fetcher = _fetcher(handler)
+            try:
+                return await fetcher.probe_cors(["https://example.com/"], CORS_PROBE_ORIGIN)
+            finally:
+                await fetcher.close()
+
+        artifacts, failed = asyncio.run(run())
+        assert artifacts == []
+        assert failed == ["https://example.com/ (CORS probe)"]
 
     def test_probe_is_still_ssrf_guarded(self, monkeypatch):
         def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
