@@ -99,3 +99,39 @@ def test_run_checks_no_findings_scores_full(monkeypatch):
 
     assert result.findings == []
     assert result.summary.overall_score == 100.0
+
+
+def test_run_checks_keeps_cors_finding_for_each_url_on_one_host(monkeypatch):
+    # Two paths on one host that both reflect the probe Origin are two
+    # findings: each URL needs its own fix. Their descriptions are identical,
+    # so host-level dedupe used to collapse them into one.
+    def check(art, cfg):
+        return [
+            Finding(
+                id="cors-reflected-origin",
+                severity=Severity.MEDIUM,
+                title="CORS Reflects Any Origin",
+                description="same text",
+                url=art.url,
+                tags=["cors"],
+            )
+        ]
+
+    monkeypatch.setattr(runner_mod, "PROBE_CHECK_MODULES", [check])
+    artifacts = [
+        _artifact("https://x.test/api/a").model_copy(
+            update={"request_origin": "https://o.invalid"}
+        ),
+        _artifact("https://x.test/api/b").model_copy(
+            update={"request_origin": "https://o.invalid"}
+        ),
+    ]
+    result = runner_mod.Runner(AegisConfig()).run_checks(artifacts)
+    assert [f.url for f in result.findings] == ["https://x.test/api/a", "https://x.test/api/b"]
+
+    # Baselining one path must not hide the other.
+    from aegisaudit.baseline import apply_baseline, fingerprint
+
+    filtered, suppressed = apply_baseline(result, {fingerprint(result.findings[0])})
+    assert suppressed == 1
+    assert [f.url for f in filtered.findings] == ["https://x.test/api/b"]

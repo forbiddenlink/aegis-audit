@@ -60,6 +60,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   re-sent and cookies stripped on every hop) and classifies the final response. A
   redirect loop, a redirect without `Location`, or a hop to a blocked host is recorded
   in `failed_targets` as `<url> (CORS probe)`.
+- **CORS findings are kept per URL.** Two reflecting paths on one host were collapsed
+  into one finding by host-level de-duplication, hiding the second URL from the report
+  and from baselines.
 - CRITICAL findings rendered in green in the CLI table (fallthrough after HIGH/
   MEDIUM/LOW). They now use bold red, same as the HTML report.
 - Weak Referrer-Policy values (`unsafe-url`, `no-referrer-when-downgrade`) are
