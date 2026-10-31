@@ -41,7 +41,9 @@ cookies or other credentials are sent and redirects are not followed.
   misconfiguration, not an exploitable hole.
 - **`*`, no credentials** (info): valid for public resources.
 - **No `Access-Control-Allow-Origin`**: pass (no finding).
-- A probe that cannot complete is listed in `failed_targets` as
+- The probe follows redirects (apex to www), re-checking each hop with the SSRF guard, and
+  classifies the final response; the finding is attributed to the URL you asked about.
+- A probe that cannot complete (including a redirect loop or one to a blocked host) is listed in `failed_targets` as
   `<url> (CORS probe)`, never counted as a pass.
 
 ## HTTPS Hygiene

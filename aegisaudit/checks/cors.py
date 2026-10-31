@@ -37,6 +37,8 @@ def check_cors(artifact: ScanArtifact, config: AegisConfig) -> List[Finding]:
     # The CORS spec only recognises the exact, case-sensitive value "true".
     credentials = headers.get("access-control-allow-credentials", "").strip() == "true"
     evidence = f"Origin: {origin} -> Access-Control-Allow-Origin: {allow_origin}"
+    if artifact.final_url and artifact.final_url != artifact.url:
+        evidence += f"; response from {artifact.final_url} after redirect"
     if credentials:
         evidence += "; Access-Control-Allow-Credentials: true"
 
