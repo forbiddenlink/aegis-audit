@@ -29,6 +29,9 @@ Shared options:
 `scan` always fetches `/.well-known/security.txt` for each origin (RFC 9116).
 That is a public disclosure file, not an exposure probe.
 
+`scan` also sends one anonymous `GET` with `Origin: https://example.invalid` to each target
+it was given (CORS check): no credentials, redirects not followed.
+
 Exit codes follow semgrep / osv-scanner:
 
 - `0` success (clean, or findings present but below the gate)

@@ -58,6 +58,10 @@ class ScanArtifact(BaseModel):
     set_cookie_headers: List[str] = Field(default_factory=list)
     body_snippet: str  # Truncated body for analysis
     content_type: str
+    # Set only when this response answers a cross-origin probe, i.e. the request
+    # carried `Origin: <this value>`. CORS checks need to know what origin was
+    # sent, because Access-Control-Allow-Origin is meaningless without it.
+    request_origin: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
 

@@ -19,6 +19,9 @@ reports.
   - **Supply chain**: missing Subresource Integrity on third-party scripts and
     stylesheets, outdated JS libraries.
   - **Content**: passively detects PII (emails) and exposed secrets in HTML.
+  - **CORS**: sends one anonymous GET per target with
+    `Origin: https://example.invalid` (no credentials, redirects not followed) and
+    flags a reflected origin, with or without credentials, and wildcard misuse.
   - **Disclosure**: always fetches `/.well-known/security.txt` (RFC 9116).
   - **Probing**: optionally checks for exposed `.env` / `.git` (`--probe`).
 

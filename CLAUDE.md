@@ -32,7 +32,7 @@ Docker: `docker build -t aegis . && docker run --rm aegis scan --url https://exa
 
 - `aegisaudit/cli.py` - Typer app entry point (`aegis` console script)
 - `aegisaudit/checks/` - web-scan checks: `headers.py`, `https.py`, `tls.py`, `dns.py`,
-  `cookies.py`, `sri.py`, `security_txt.py`, `javascript.py`, `exposure.py`, `secrets.py`
+  `cookies.py`, `cors.py`, `sri.py`, `security_txt.py`, `javascript.py`, `exposure.py`, `secrets.py`
 - `aegisaudit/sast/` - source-tree audit: `scanner.py`, `static.py`, `secrets.py`,
   `dependencies.py` (pip-audit + optional npm audit), `ignore.py` (`.aegisignore`
   handling)

@@ -61,6 +61,21 @@ class Fetcher:
         results = await asyncio.gather(*(self.fetch(url) for url in urls))
         return [artifact for artifact in results if artifact is not None]
 
+    async def probe_cors(
+        self, urls: list[str], origin: str
+    ) -> tuple[list[ScanArtifact], list[str]]:
+        """Fetch each URL as an Origin probe; return (artifacts, failed labels).
+
+        A probe that could not complete is returned as a failure label, never
+        dropped: otherwise an unreachable host would read as "no CORS header",
+        which is a pass. Labels are marked so they are not confused with the
+        plain fetch of the same URL.
+        """
+        results = await asyncio.gather(*(self.fetch(url, origin=origin) for url in urls))
+        artifacts = [a for a in results if a is not None]
+        failed = [f"{url} (CORS probe)" for url, a in zip(urls, results) if a is None]
+        return artifacts, failed
+
     async def _respect_rate_limit(self) -> None:
         # Guard against a non-positive rate so a misconfigured value can't
         # divide by zero or sleep forever. The lock serializes the delay so it
@@ -100,11 +115,30 @@ class Fetcher:
             response = await self.client.get(current)
         return response
 
-    async def fetch(self, url: str) -> Optional[ScanArtifact]:
+    async def _get_origin_probe(self, url: str, origin: str) -> httpx.Response:
+        """One anonymous GET carrying an Origin header, redirects NOT followed.
+
+        The client shares a cookie jar across requests, and httpx merges it into
+        every request it builds, so the Cookie header is stripped: the probe
+        must never present credentials. A redirect is not followed because it
+        usually leads into login or account pages, and the CORS answer of
+        interest is the one from the URL the user asked about.
+        """
+        self._validate(url)
+        request = self.client.build_request("GET", url, headers={"Origin": origin})
+        request.headers.pop("cookie", None)
+        return await self.client.send(request, follow_redirects=False)
+
+    async def fetch(self, url: str, origin: Optional[str] = None) -> Optional[ScanArtifact]:
+        """Fetch a URL. With `origin`, make it an anonymous cross-origin probe."""
         await self._respect_rate_limit()
         async with self.semaphore:
             try:
-                response = await self._get(url)
+                response = (
+                    await self._get(url)
+                    if origin is None
+                    else await self._get_origin_probe(url, origin)
+                )
 
                 # Truncate body if needed
                 body_content = response.text
@@ -120,6 +154,7 @@ class Fetcher:
                     set_cookie_headers=response.headers.get_list("set-cookie"),
                     content_type=response.headers.get("content-type", ""),
                     body_snippet=body_content,
+                    request_origin=origin,
                 )
             except SSRFError as e:
                 # A blocked destination is a security event, not a transient
