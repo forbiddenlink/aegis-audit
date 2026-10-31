@@ -233,7 +233,9 @@ class TestProbeRequest:
         findings = check_cors(artifact, CFG)
         assert [f.id for f in findings] == ["cors-reflected-origin"]
         assert findings[0].url == "https://example.com/"
-        assert "https://www.example.com/" in findings[0].evidence
+        assert findings[0].evidence.endswith(
+            "; response from https://www.example.com/ after redirect"
+        )
 
     def test_probe_redirect_to_internal_host_is_a_failure(self, monkeypatch):
         def resolve(host, port, **_kwargs):
