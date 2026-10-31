@@ -80,6 +80,10 @@ def gate_failure_reason(
     Gating is opt-in: with neither option set this always returns None, so
     reporting stays non-blocking by default (matching `semgrep scan` and
     `trivy`).
+
+    With a gate set, an incomplete scan fails it: a target or CORS probe that
+    could not be fetched was never assessed, so "no findings" would be a
+    silent pass.
     """
     if fail_on is not None:
         count = findings_at_or_above(result, fail_on)
@@ -90,6 +94,16 @@ def gate_failure_reason(
         return (
             f"Score {result.summary.overall_score:.1f} is below the required "
             f"{fail_under:.1f} (--fail-under)."
+        )
+
+    if (fail_on is not None or fail_under is not None) and result.failed_targets:
+        shown = ", ".join(result.failed_targets[:3])
+        more = len(result.failed_targets) - 3
+        if more > 0:
+            shown += f", and {more} more"
+        return (
+            f"{len(result.failed_targets)} request(s) failed, so the scan is incomplete "
+            f"and these were not assessed: {shown}."
         )
 
     return None

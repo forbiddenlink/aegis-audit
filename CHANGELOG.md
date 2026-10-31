@@ -63,6 +63,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **CORS findings are kept per URL.** Two reflecting paths on one host were collapsed
   into one finding by host-level de-duplication, hiding the second URL from the report
   and from baselines.
+- **Incomplete scans fail a configured gate.** With `--fail-on` or `--fail-under` set, a
+  scan with any entry in `failed_targets` now exits 1 with the unassessed targets named,
+  instead of passing on the findings that were collected. Behaviour is unchanged when
+  neither option is set. This changes exit codes for existing CI users whose scans had
+  unreachable targets.
 - CRITICAL findings rendered in green in the CLI table (fallthrough after HIGH/
   MEDIUM/LOW). They now use bold red, same as the HTML report.
 - Weak Referrer-Policy values (`unsafe-url`, `no-referrer-when-downgrade`) are

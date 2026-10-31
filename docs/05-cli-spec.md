@@ -30,10 +30,14 @@ Shared options:
 That is a public disclosure file, not an exposure probe.
 
 `scan` also sends one anonymous `GET` with `Origin: https://example.invalid` to each target
-it was given (CORS check): no credentials, redirects not followed.
+it was given (CORS check): no credentials. Redirects are followed, each hop SSRF-checked with `Origin` re-sent and cookies
+stripped, and the final response is classified. A probe that cannot reach a final response is
+listed in `failed_targets`.
 
 Exit codes follow semgrep / osv-scanner:
 
 - `0` success (clean, or findings present but below the gate)
-- `1` findings tripped `--fail-on` / `--fail-under`
+- `1` findings tripped `--fail-on` / `--fail-under`, or the scan was incomplete (any entry in
+  `failed_targets`, including `(CORS probe)` failures) while a gate was set. Without `--fail-on`
+  or `--fail-under`, an incomplete scan still exits `0`.
 - `>=2` usage or tool error (distinct from "found something")
