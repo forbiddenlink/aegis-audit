@@ -21,7 +21,9 @@ PATTERNS: Dict[str, Dict[str, Any]] = {
         "tags": ["secrets", "google"],
     },
     "Generic Private Key": {
-        "regex": r"-----BEGIN (RSA|DSA|EC|PGP|OPENSSH) PRIVATE KEY-----",
+        # Covers the algorithm-specific PEM headers plus PKCS#8 ("BEGIN PRIVATE KEY"),
+        # encrypted PKCS#8 ("BEGIN ENCRYPTED PRIVATE KEY") and PGP's "... KEY BLOCK".
+        "regex": r"-----BEGIN (?:(?:RSA|DSA|EC|PGP|OPENSSH|ENCRYPTED) )?PRIVATE KEY(?: BLOCK)?-----",
         "severity": Severity.CRITICAL,
         "tags": ["secrets", "crypto"],
     },
@@ -33,11 +35,20 @@ PATTERNS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def scan_file_for_secrets(path: Path, display_path: Optional[str] = None) -> List[Finding]:
+def scan_file_for_secrets(
+    path: Path,
+    display_path: Optional[str] = None,
+    errors: Optional[List[str]] = None,
+) -> List[Finding]:
     """Scan one file for hardcoded secrets.
 
     display_path is the location reported on the finding. It should be relative
     to the scan root so SARIF consumers can match it against a repo tree.
+
+    If the file could not be scanned (unreadable, or any unexpected error) its
+    location is appended to ``errors`` so the caller can report an incomplete scan
+    instead of treating the file as clean. Binary (non-UTF-8) files are skipped
+    deliberately and are not errors.
     """
     findings = []
     location = display_path if display_path is not None else str(path)
@@ -71,6 +82,8 @@ def scan_file_for_secrets(path: Path, display_path: Optional[str] = None) -> Lis
                 break
 
     except Exception:
-        pass
+        if errors is not None:
+            errors.append(location)
+        return findings
 
     return findings
