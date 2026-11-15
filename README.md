@@ -8,7 +8,7 @@ reports.
 
 ## Features
 
-- **Web Scan (`scan`)** — passive checks against a live URL:
+- **Web Scan (`scan`)**: passive checks against a live URL:
   - **Headers**: HSTS, Content-Security-Policy (including `unsafe-inline` /
     `unsafe-eval` / wildcard quality), X-Content-Type-Options, Referrer-Policy,
     clickjacking (`X-Frame-Options` or CSP `frame-ancestors`), and
@@ -22,10 +22,11 @@ reports.
   - **CORS**: sends one anonymous GET per target with
     `Origin: https://example.invalid` (no credentials; redirects followed through the SSRF guard, the final response is classified) and
     flags a reflected origin, with or without credentials, and wildcard misuse.
+  - **Cookies**: Secure, HttpOnly and SameSite attributes.
   - **Disclosure**: always fetches `/.well-known/security.txt` (RFC 9116).
   - **Probing**: optionally checks for exposed `.env` / `.git` (`--probe`).
 
-- **Code Audit (`audit`)** — static analysis of a local directory:
+- **Code Audit (`audit`)**: static analysis of a local directory:
   - **Secrets**: hardcoded AWS keys, Google API keys, Slack tokens, private keys.
   - **Dependencies**: vulnerable Python packages (via `pip-audit`, bundled) and
     Node.js packages (via `npm audit`, if installed).
@@ -36,9 +37,11 @@ reports.
   - **Reports**: JSON, SARIF 2.1.0 (GitHub code scanning), and HTML.
   - **History**: scan scores are recorded to a local SQLite database and
     rendered as a trend chart in the HTML report.
-  - **Alerts**: results can be posted to a Slack/Discord webhook.
+  - **Alerts**: results can be posted to a Slack/Discord webhook or a Telegram chat (`--telegram-token`, `--telegram-chat-id`), or pushed to a Notion database (`--notion-token`, `--notion-db`).
 
 ## Installation
+
+Requires Python 3.11 or newer (`requires-python` in `pyproject.toml`).
 
 ```bash
 git clone https://github.com/forbiddenlink/aegis-audit.git
@@ -118,7 +121,7 @@ Exit codes follow the convention used by semgrep and osv-scanner:
 |------|---------|
 | `0`  | Clean, or findings present but below the gate |
 | `1`  | Findings tripped the gate |
-| `>=2`| Tool or usage error — distinct from "found something" |
+| `>=2`| Tool or usage error, distinct from "found something" |
 
 That distinction matters in CI: a crashed scan must not look like a clean one.
 
@@ -139,14 +142,14 @@ aegis audit . --baseline .aegis-baseline.json --fail-on high
 `--baseline` / `--update-baseline` work on both `scan` and `audit`.
 
 The baseline stores only opaque fingerprints (a hash of each finding's rule,
-location, and description) — never the finding text or evidence, so a detected
+location, and description), never the finding text or evidence, so a detected
 secret is not copied into a committed file. Fingerprints ignore line numbers, so
 inserting unrelated code above a finding does not make it look new.
 
 ### Suppressing findings
 
 Real repositories contain fake credentials in test fixtures and docs. Add a
-`.aegisignore` in the scan root — one glob per line, relative to that root,
+`.aegisignore` in the scan root: one glob per line, relative to that root,
 `#` for comments, a trailing `/` to exclude a subtree:
 
 ```
@@ -200,3 +203,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Releasing](docs/RELEASING.md)
 - [Check catalog](docs/07-check-catalog.md)
 - [CLI spec](docs/05-cli-spec.md)
+- [Config and policy](docs/06-config-policy.md)
+- [Roadmap](docs/10-roadmap.md)
