@@ -404,6 +404,11 @@ def audit(
     console.print(f"\n[bold]Audit Complete found {len(findings)} issues.[/bold]")
     console.print(f"Overall Score: [bold cyan]{result.summary.overall_score:.1f}[/bold cyan] / 100")
     _print_findings(findings, "Audit Findings", _audit_location)
+    if result.failed_targets:
+        console.print(
+            f"[red]✗ {len(result.failed_targets)} file(s) could not be scanned "
+            f"(not assessed): {', '.join(result.failed_targets[:5])}[/red]"
+        )
 
     _write_reports(result, out, formats)
 

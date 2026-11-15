@@ -19,6 +19,7 @@ class SASTScanner:
 
     def scan(self, root_path: Path) -> ScanResult:
         all_findings = []
+        failed_files: list[str] = []
         ignore_rules = IgnoreRules.from_root(root_path)
 
         # 1. Dependency Checks (Root level primarily)
@@ -56,7 +57,9 @@ class SASTScanner:
                     continue  # broken symlink, race, permissions
 
                 # Secrets Scan (All text files)
-                all_findings.extend(scan_file_for_secrets(file_path, display_path))
+                all_findings.extend(
+                    scan_file_for_secrets(file_path, display_path, errors=failed_files)
+                )
 
                 # Static Analysis (Python)
                 if file_path.suffix == ".py":
@@ -77,5 +80,9 @@ class SASTScanner:
         summary = calculate_score(all_findings)
 
         return ScanResult(
-            targets=[str(root_path)], findings=all_findings, summary=summary, config_snapshot={}
+            targets=[str(root_path)],
+            failed_targets=failed_files,
+            findings=all_findings,
+            summary=summary,
+            config_snapshot={},
         )

@@ -102,7 +102,7 @@ def gate_failure_reason(
         if more > 0:
             shown += f", and {more} more"
         return (
-            f"{len(result.failed_targets)} request(s) failed, so the scan is incomplete "
+            f"{len(result.failed_targets)} target(s) failed, so the scan is incomplete "
             f"and these were not assessed: {shown}."
         )
 
