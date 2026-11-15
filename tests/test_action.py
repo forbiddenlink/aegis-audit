@@ -61,7 +61,13 @@ def test_summary_script_renders_score_and_top_findings(tmp_path):
                 "failed_target_count": 0,
                 "counts_by_severity": {"high": 1, "low": 1},
                 "top_findings": [
-                    {"id": "SEC-1", "severity": "high", "title": "Hardcoded key", "url": None, "line": 7}
+                    {
+                        "id": "SEC-1",
+                        "severity": "high",
+                        "title": "Hardcoded key",
+                        "url": None,
+                        "line": 7,
+                    }
                 ],
             }
         )
