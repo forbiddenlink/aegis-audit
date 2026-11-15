@@ -43,6 +43,9 @@ def test_every_flag_the_action_passes_exists_on_the_cli():
         runner.invoke(app, ["scan", "--help"]).output
         + runner.invoke(app, ["audit", "--help"]).output
     )
+    # CI forces color (GITHUB_ACTIONS), so Rich injects ANSI escapes that can
+    # split a flag mid-name ("-\x1b[0m\x1b[1;36m-help"). Strip them first.
+    help_text = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", help_text)
     # Rich wraps long option names; collapse whitespace and box characters.
     help_text = re.sub(r"[\s│╭╮╰╯─]+", "", help_text)
     for flag in flags:
