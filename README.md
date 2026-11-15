@@ -80,6 +80,26 @@ aegis audit .
 aegis audit ./src --out ./audit-reports --format json,sarif
 ```
 
+### GitHub Action
+
+Run the audit in CI, write the score to the job summary and send SARIF to code
+scanning. Pin a commit SHA; the action installs the CLI from its own checkout, so
+the ref you pin is the version that runs.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # only needed for upload-sarif
+steps:
+  - uses: actions/checkout@v7
+  - uses: forbiddenlink/aegis-audit@<commit-sha>
+    with:
+      mode: audit           # or: scan, with target set to a URL
+      target: .
+      fail-on: high
+      upload-sarif: "true"
+```
+
 ### Failing a build
 
 Gating is opt-in: with no gate flag, both commands report and exit 0.
