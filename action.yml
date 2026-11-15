@@ -1,0 +1,92 @@
+name: Aegis Audit
+description: Scan a deployed site or audit a source tree, write the score to the job summary, and optionally upload SARIF to code scanning.
+branding:
+  icon: shield
+  color: blue
+inputs:
+  mode:
+    description: "audit (source tree) or scan (deployed URL)."
+    required: false
+    default: audit
+  target:
+    description: "Directory to audit, or URL to scan."
+    required: false
+    default: .
+  fail-on:
+    description: Fail the job if any finding is at or above this severity (info, low, medium, high, critical). Empty means do not gate on severity.
+    required: false
+    default: ""
+  fail-under:
+    description: Fail the job if the overall score is below this value (0-100). Empty means do not gate on score.
+    required: false
+    default: ""
+  baseline:
+    description: Path to a baseline file. Findings already in it are suppressed.
+    required: false
+    default: ""
+  upload-sarif:
+    description: Upload the SARIF report to code scanning (audit mode only). The calling workflow must grant `security-events` write permission.
+    required: false
+    default: "false"
+  python-version:
+    description: Python version used to run the CLI.
+    required: false
+    default: "3.12"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install Aegis Audit from this action's own ref
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        # Installing from the checked-out action keeps a pinned ref from drifting
+        # to a different CLI, and works before any PyPI release exists.
+        python -m pip install --disable-pip-version-check "$ACTION_PATH"
+    - name: Run Aegis Audit
+      id: aegis
+      shell: bash
+      env:
+        AEGIS_MODE: ${{ inputs.mode }}
+        AEGIS_TARGET: ${{ inputs.target }}
+        AEGIS_FAIL_ON: ${{ inputs.fail-on }}
+        AEGIS_FAIL_UNDER: ${{ inputs.fail-under }}
+        AEGIS_BASELINE: ${{ inputs.baseline }}
+        AEGIS_OUT: ${{ runner.temp }}/aegis-out
+      run: |
+        args=(--out "$AEGIS_OUT" --format json,sarif,summary)
+        if [ -n "$AEGIS_FAIL_ON" ]; then args+=(--fail-on "$AEGIS_FAIL_ON"); fi
+        if [ -n "$AEGIS_FAIL_UNDER" ]; then args+=(--fail-under "$AEGIS_FAIL_UNDER"); fi
+        if [ -n "$AEGIS_BASELINE" ]; then args+=(--baseline "$AEGIS_BASELINE"); fi
+        case "$AEGIS_MODE" in
+          audit) cmd=(aegis audit "$AEGIS_TARGET") ;;
+          scan) cmd=(aegis scan --url "$AEGIS_TARGET") ;;
+          *) echo "mode must be audit or scan" >&2; exit 2 ;;
+        esac
+        # Keep the exit code so the summary and SARIF upload still run on a failed gate.
+        set +e
+        "${cmd[@]}" "${args[@]}"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+    - name: Write job summary
+      if: always()
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        AEGIS_OUT: ${{ runner.temp }}/aegis-out
+      run: python "$ACTION_PATH/action/summary.py" "$AEGIS_OUT/summary.json" >> "$GITHUB_STEP_SUMMARY"
+    - name: Upload SARIF to code scanning
+      if: always() && inputs.upload-sarif == 'true' && inputs.mode == 'audit'
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      with:
+        sarif_file: ${{ runner.temp }}/aegis-out/report.sarif
+        category: aegis-audit
+    - name: Apply the gate result
+      shell: bash
+      env:
+        AEGIS_EXIT: ${{ steps.aegis.outputs.exit-code }}
+      run: exit "${AEGIS_EXIT:-2}"
